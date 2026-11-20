@@ -9,7 +9,7 @@
         catch (_) { return fallback; }
     };
     const players = () => readJSON(KEYS.players).map(item => typeof item === "string" ? { username: item } : item);
-    const currentUser = () => {
+    const user = () => {
         try { return JSON.parse(sessionStorage.getItem(KEYS.session) || "null"); }
         catch (_) { return null; }
     };
@@ -36,7 +36,21 @@
         }
     }
 
+    function hideSidebarTeams() {
+        document.getElementById("team-sidebar-title")?.classList.add("hidden");
+        document.getElementById("team-nav-list")?.classList.add("hidden");
+    }
+
+    function showView(name, title) {
+        document.querySelectorAll(".view-section").forEach(section => section.classList.remove("active"));
+        document.getElementById(`view-${name}`)?.classList.add("active");
+        document.querySelectorAll("#main-nav-list .nav-item").forEach(button => button.classList.toggle("active", button.dataset.view === name));
+        const heading = document.getElementById("view-title");
+        if (heading) heading.textContent = title;
+    }
+
     function renderDirectory() {
+        hideSidebarTeams();
         const list = document.getElementById("team-directory-list");
         if (!list) return;
         const all = players();
@@ -49,47 +63,39 @@
             return;
         }
         all.forEach(team => {
-            const li = document.createElement("li");
+            const item = document.createElement("li");
             const button = document.createElement("button");
             button.type = "button";
             button.className = "team-directory-item";
             button.dataset.teamOpen = team.username;
             button.innerHTML = `<span class="team-directory-icon">🛡️</span><span><strong>${escapeHTML(teamName(team))}</strong><small>Manager: ${escapeHTML(team.username)}</small></span><span class="team-directory-arrow">›</span>`;
-            // Bind each newly rendered button directly; rendering the directory again after
-            // returning from a team therefore always gives every card a live click handler.
-            button.addEventListener("click", event => {
-                event.preventDefault();
-                openTeam(team.username);
-            });
-            li.append(button);
-            list.append(li);
+            item.append(button);
+            list.append(item);
         });
     }
 
-    function renderRanking() {
-        const target = document.getElementById("ranking-content");
-        if (!target) return;
-        const all = players().sort((a, b) => teamName(a).localeCompare(teamName(b), "de"));
-        target.innerHTML = all.length
-            ? `<div class="ranking-table-wrap"><table class="ranking-table"><thead><tr><th>Platz</th><th>Team</th><th>Manager</th><th>Punkte</th></tr></thead><tbody>${all.map((team, index) => `<tr><td>${index + 1}</td><td>🛡️ ${escapeHTML(teamName(team))}</td><td>${escapeHTML(team.username)}</td><td>–</td></tr>`).join("")}</tbody></table></div><p class="ranking-note">Punkte sind noch nicht verfügbar, da das Spiel aktuell keine Punktestände speichert.</p>`
-            : '<div class="placeholder-box">Noch keine Teams im Ranking.</div>';
+    function showDirectory() {
+        selectedTeamUsername = null;
+        showView("team", "Meine Teams");
+        document.getElementById("team-details")?.classList.add("hidden");
+        document.getElementById("team-directory")?.classList.remove("hidden");
+        renderDirectory();
     }
 
     function openTeam(username) {
         const team = players().find(item => item.username === username);
         if (!team) return;
         selectedTeamUsername = team.username;
-        if (typeof window.openTeamView === "function") window.openTeamView(team.username);
-
+        hideSidebarTeams();
+        showView("team", teamName(team));
         document.getElementById("team-directory")?.classList.add("hidden");
         document.getElementById("team-details")?.classList.remove("hidden");
+
         const name = teamName(team);
         document.getElementById("team-view-name").textContent = name;
         document.getElementById("team-view-badge").textContent = name.charAt(0).toUpperCase();
         document.getElementById("team-view-owner").textContent = `Manager: ${team.username}`;
         document.getElementById("team-view-owner-inline").textContent = team.username;
-        document.getElementById("view-title").textContent = name;
-
         const roster = Array.isArray(team.roster) ? team.roster : (Array.isArray(team.players) ? team.players : []);
         const stats = document.querySelectorAll("#team-details .team-details-grid .stat-value");
         if (stats[0]) stats[0].textContent = team.status || "Aktiv";
@@ -110,7 +116,7 @@
             header.append(actions);
         }
         actions.replaceChildren();
-        const viewer = currentUser();
+        const viewer = user();
         if (viewer?.role === "player" && viewer.username === team.username) {
             const form = document.createElement("form");
             form.id = "rename-team-form";
@@ -122,26 +128,24 @@
         const back = document.createElement("button");
         back.type = "button";
         back.className = "btn btn-secondary btn-small";
+        back.dataset.teamBack = "true";
         back.textContent = "← Alle Teams";
-        back.addEventListener("click", showDirectory);
         actions.append(back);
     }
 
-    function showDirectory() {
-        selectedTeamUsername = null;
-        // Return to the outer section first, then explicitly restore the directory panel.
-        if (typeof window.switchView === "function") window.switchView("team");
-        document.getElementById("team-details")?.classList.add("hidden");
-        document.getElementById("team-directory")?.classList.remove("hidden");
-        const title = document.getElementById("view-title");
-        if (title) title.textContent = "Meine Teams";
-        renderDirectory();
+    function renderRanking() {
+        const target = document.getElementById("ranking-content");
+        if (!target) return;
+        const all = players().sort((a, b) => teamName(a).localeCompare(teamName(b), "de"));
+        target.innerHTML = all.length
+            ? `<div class="ranking-table-wrap"><table class="ranking-table"><thead><tr><th>Platz</th><th>Team</th><th>Manager</th><th>Punkte</th></tr></thead><tbody>${all.map((team, index) => `<tr><td>${index + 1}</td><td>🛡️ ${escapeHTML(teamName(team))}</td><td>${escapeHTML(team.username)}</td><td>–</td></tr>`).join("")}</tbody></table></div><p class="ranking-note">Punkte sind noch nicht verfügbar, da das Spiel aktuell keine Punktestände speichert.</p>`
+            : '<div class="placeholder-box">Noch keine Teams im Ranking.</div>';
     }
 
     function renderNews() {
         const feed = document.getElementById("news-feed");
         if (!feed) return;
-        const admin = currentUser()?.role === "admin";
+        const admin = user()?.role === "admin";
         feed.innerHTML = readJSON(KEYS.news).map(article => `<article class="news-item"><div class="news-meta">Veröffentlicht am ${escapeHTML(article.date)} von ${escapeHTML(article.author)}</div><h3>${escapeHTML(article.title)}</h3><p>${escapeHTML(article.body)}</p>${admin ? `<div class="news-admin-actions"><button class="btn btn-secondary btn-small" type="button" data-news-action="edit" data-news-id="${escapeHTML(article.id)}">✏️ Bearbeiten</button><button class="btn btn-danger btn-small" type="button" data-news-action="delete" data-news-id="${escapeHTML(article.id)}">🗑️ Löschen</button></div>` : ""}</article>`).join("");
     }
 
@@ -157,28 +161,42 @@
 
     document.addEventListener("DOMContentLoaded", () => {
         ensureNavigation();
+        hideSidebarTeams();
         renderDirectory();
         renderRanking();
         window.renderNews = renderNews;
         renderNews();
 
-        document.getElementById("main-nav-list")?.addEventListener("click", event => {
-            if (event.target.closest('[data-view="team"]')) showDirectory();
-            if (event.target.closest('[data-view="ranking"]')) renderRanking();
-        });
-        document.getElementById("view-team")?.addEventListener("click", event => {
-            if (event.target.closest("[data-view-team-back]")) showDirectory();
-        });
+        // Capture navigation before the legacy script's bubbling handlers. One handler owns
+        // opening cards, returning to the directory, and choosing the Teams navigation item.
+        document.addEventListener("click", event => {
+            const teamNav = event.target.closest('#main-nav-list [data-view="team"]');
+            const rankingNav = event.target.closest('#main-nav-list [data-view="ranking"]');
+            const back = event.target.closest("[data-team-back]");
+            const card = event.target.closest("[data-team-open]");
+            if (teamNav) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                showDirectory();
+            } else if (back) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                showDirectory();
+            } else if (card) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                openTeam(card.dataset.teamOpen);
+            } else if (rankingNav) {
+                renderRanking();
+            }
+        }, true);
 
         document.getElementById("view-team")?.addEventListener("submit", event => {
             if (!event.target.matches("#rename-team-form")) return;
             event.preventDefault();
-            const viewer = currentUser();
+            const viewer = user();
             const owner = event.target.dataset.owner;
-            if (viewer?.role !== "player" || !selectedTeamUsername || owner !== selectedTeamUsername || viewer.username !== selectedTeamUsername) {
-                event.target.remove();
-                return;
-            }
+            if (viewer?.role !== "player" || !selectedTeamUsername || owner !== selectedTeamUsername || viewer.username !== selectedTeamUsername) return;
             const newName = document.getElementById("rename-team-input").value.trim().slice(0, 40);
             const feedback = document.getElementById("team-rename-feedback");
             if (!newName) {
@@ -198,7 +216,7 @@
         });
 
         document.getElementById("news-form")?.addEventListener("submit", event => {
-            if (editingNewsId === null || currentUser()?.role !== "admin") return;
+            if (editingNewsId === null || user()?.role !== "admin") return;
             event.preventDefault();
             event.stopImmediatePropagation();
             const items = readJSON(KEYS.news);
@@ -207,7 +225,7 @@
             article.title = document.getElementById("news-title-input").value.trim();
             article.body = document.getElementById("news-body-input").value.trim();
             article.date = new Date().toLocaleDateString("de-DE");
-            article.author = currentUser().username;
+            article.author = user().username;
             localStorage.setItem(KEYS.news, JSON.stringify(items));
             resetNewsEditor();
             renderNews();
@@ -215,7 +233,7 @@
         document.getElementById("news-cancel-edit-btn")?.addEventListener("click", resetNewsEditor);
         document.getElementById("news-feed")?.addEventListener("click", event => {
             const button = event.target.closest("[data-news-action]");
-            if (!button || currentUser()?.role !== "admin") return;
+            if (!button || user()?.role !== "admin") return;
             const items = readJSON(KEYS.news);
             const article = items.find(item => String(item.id) === String(button.dataset.newsId));
             if (!article) return;
