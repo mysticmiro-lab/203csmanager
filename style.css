@@ -63,6 +63,20 @@ body {
     background-color: var(--accent-orange-hover);
 }
 
+.btn-secondary {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+}
+.btn-secondary:hover {
+    background-color: var(--bg-hover);
+}
+
+.btn-small {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+}
+
 .btn-danger {
     background-color: var(--danger);
     padding: 6px 12px;
@@ -338,6 +352,9 @@ input:focus, textarea:focus {
 .sidebar-footer {
     padding: 16px;
     border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 /* ==================== MAIN CONTENT ==================== */
@@ -630,9 +647,10 @@ input:focus, textarea:focus {
 
 .feedback-msg {
     margin-top: 12px;
-    padding: 8px 12px;
+    padding: 10px 12px;
     border-radius: 6px;
-    font-size: 0.85rem;
+    font-size: 0.88rem;
+    line-height: 1.4;
 }
 
 .feedback-msg.success {
@@ -659,8 +677,92 @@ input:focus, textarea:focus {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
     background-color: var(--bg-card);
-    padding: 10px 14px;
+    padding: 12px 14px;
     border-radius: 6px;
     border: 1px solid var(--border-color);
+}
+
+.admin-player-info {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.password-pill {
+    background-color: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.88rem;
+    color: var(--accent-orange);
+    user-select: all;
+}
+
+.password-changed-tag {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.admin-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ==================== MODAL ==================== */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 1000;
+}
+
+.modal-box {
+    width: 100%;
+    max-width: 420px;
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 24px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+
+.modal-header h2 {
+    font-size: 1.2rem;
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.modal-close:hover {
+    color: var(--text-main);
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 8px;
 }
