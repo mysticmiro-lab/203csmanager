@@ -25,10 +25,14 @@
             <form id="player-login-form" class="auth-form active">
                 <div class="input-group">
                     <label for="player-username">Benutzername</label>
-                    <input type="text" id="player-username" placeholder="Deinen geheimen Benutzernamen eingeben..." required autocomplete="off">
+                    <input type="text" id="player-username" placeholder="Benutzernamen eingeben..." required autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label for="player-password">Passwort</label>
+                    <input type="password" id="player-password" placeholder="Passwort vom Admin eingeben..." required>
                 </div>
                 <button type="submit" class="btn btn-primary btn-full">Als Spieler anmelden</button>
-                <p class="auth-hint">Du benötigst einen Benutzernamen, der vom Admin freigeschaltet wurde.</p>
+                <p class="auth-hint">Du benötigst deinen Benutzernamen und das vom Admin zugewiesene Passwort.</p>
             </form>
 
             <!-- Admin Login Formular -->
@@ -42,7 +46,6 @@
                     <input type="password" id="admin-password" placeholder="Passwort eingeben..." required>
                 </div>
                 <button type="submit" class="btn btn-accent btn-full">Als Admin anmelden</button>
-                <p class="auth-hint">Standard-Login: <strong>Admin</strong> / <strong>admin123</strong></p>
             </form>
 
             <div id="auth-error" class="error-msg hidden"></div>
@@ -88,6 +91,7 @@
             </nav>
 
             <div class="sidebar-footer">
+                <button id="open-password-modal-btn" class="btn btn-secondary btn-full">🔑 Passwort ändern</button>
                 <button id="logout-btn" class="btn btn-logout btn-full">Abmelden</button>
             </div>
         </aside>
@@ -111,7 +115,7 @@
                         <div class="tutorial-grid">
                             <div class="tutorial-step">
                                 <h3>1. Anmeldung & Teams</h3>
-                                <p>Der Admin erstellt im Admin-Panel die Benutzernamen für alle Mitspieler. Sobald ein Benutzername angelegt wird, erscheint links automatisch sein eigener Teambereich.</p>
+                                <p>Der Admin erstellt im Admin-Panel die Benutzernamen und teilt den Spielern ihr generiertes Passwort mit. Sobald ein Benutzername angelegt wird, erscheint links automatisch sein eigener Teambereich.</p>
                             </div>
                             <div class="tutorial-step">
                                 <h3>2. HLTV - News & Forum</h3>
@@ -213,7 +217,7 @@
                             </div>
                             <div class="stat-box">
                                 <span class="stat-label">Budget</span>
-                                <span class="stat-value">100.000 $</span>
+                                <span class="stat-value">10.000 $</span>
                             </div>
                         </div>
                         <div class="placeholder-box" style="margin-top: 20px;">
@@ -227,7 +231,7 @@
                     <div class="admin-grid">
                         <div class="card">
                             <h2>Neuen Spieler-Benutzernamen hinzufügen</h2>
-                            <p class="muted-text">Nur Spieler, die einen hier eingetragenen Benutzernamen kennen, können sich anmelden. Jeder Name erstellt automatisch einen Teambereich in der Taskleiste.</p>
+                            <p class="muted-text">Beim Erstellen wird automatisch ein zufälliges Passwort generiert, das du dem Spieler mitteilen kannst. Jeder Name erstellt automatisch einen Teambereich in der Taskleiste.</p>
                             <form id="add-player-form" class="inline-form">
                                 <input type="text" id="new-player-username" placeholder="z.B. s1mple_fan99" required autocomplete="off">
                                 <button type="submit" class="btn btn-accent">Hinzufügen</button>
@@ -238,7 +242,7 @@
                         <div class="card">
                             <h2>Registrierte Spieler (<span id="player-count">0</span>)</h2>
                             <ul id="admin-player-list" class="admin-list">
-                                <!-- Liste der freigeschalteten Benutzernamen -->
+                                <!-- Liste der freigeschalteten Benutzernamen & Passwörter -->
                             </ul>
                         </div>
                     </div>
@@ -246,6 +250,35 @@
 
             </div>
         </main>
+    </div>
+
+    <!-- ==================== MODAL: PASSWORT ÄNDERN ==================== -->
+    <div id="password-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h2>Passwort ändern</h2>
+                <button id="close-password-modal" class="modal-close" aria-label="Schließen">&times;</button>
+            </div>
+            <form id="change-password-form">
+                <div class="input-group">
+                    <label for="old-password">Aktuelles Passwort</label>
+                    <input type="password" id="old-password" placeholder="Aktuelles Passwort eingeben..." required>
+                </div>
+                <div class="input-group">
+                    <label for="new-password">Neues Passwort</label>
+                    <input type="password" id="new-password" placeholder="Mindestens 4 Zeichen..." required minlength="4">
+                </div>
+                <div class="input-group">
+                    <label for="confirm-password">Neues Passwort bestätigen</label>
+                    <input type="password" id="confirm-password" placeholder="Neues Passwort wiederholen..." required minlength="4">
+                </div>
+                <div id="password-feedback" class="feedback-msg hidden" style="margin-bottom: 14px;"></div>
+                <div class="modal-actions">
+                    <button type="button" id="cancel-password-modal" class="btn btn-secondary">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary">Passwort speichern</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script src="script.js"></script>
