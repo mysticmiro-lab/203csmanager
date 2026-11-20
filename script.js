@@ -1,666 +1,645 @@
-:root {
-    --bg-dark: #0f141c;
-    --bg-panel: #18202c;
-    --bg-card: #1f2937;
-    --bg-hover: #2a3648;
-    --border-color: #2e3b4e;
-    --text-main: #e5e7eb;
-    --text-muted: #9ca3af;
-    --accent-blue: #3b82f6;
-    --accent-blue-hover: #2563eb;
-    --accent-orange: #f59e0b;
-    --accent-orange-hover: #d97706;
-    --danger: #ef4444;
-    --success: #10b981;
-}
-
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-}
-
-body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: var(--bg-dark);
-    color: var(--text-main);
-    height: 100vh;
-    overflow: hidden;
-}
-
-.hidden {
-    display: none !important;
-}
-
-/* ==================== BUTTONS & INPUTS ==================== */
-.btn {
-    padding: 10px 16px;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s, transform 0.1s;
-    color: #fff;
-}
-
-.btn:active {
-    transform: scale(0.98);
-}
-
-.btn-primary {
-    background-color: var(--accent-blue);
-}
-.btn-primary:hover {
-    background-color: var(--accent-blue-hover);
-}
-
-.btn-accent {
-    background-color: var(--accent-orange);
-    color: #111827;
-}
-.btn-accent:hover {
-    background-color: var(--accent-orange-hover);
-}
-
-.btn-danger {
-    background-color: var(--danger);
-    padding: 6px 12px;
-    font-size: 0.8rem;
-}
-
-.btn-logout {
-    background-color: transparent;
-    border: 1px solid var(--border-color);
-    color: var(--text-muted);
-}
-.btn-logout:hover {
-    background-color: rgba(239, 68, 68, 0.15);
-    border-color: var(--danger);
-    color: var(--danger);
-}
-
-.btn-full {
-    width: 100%;
-}
-
-input, textarea {
-    width: 100%;
-    padding: 10px 12px;
-    background-color: var(--bg-dark);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    color: var(--text-main);
-    font-size: 0.95rem;
-    outline: none;
-}
-
-input:focus, textarea:focus {
-    border-color: var(--accent-blue);
-}
-
-/* ==================== LOGIN SCREEN ==================== */
-.auth-container {
-    height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: radial-gradient(circle at top, #1e293b 0%, var(--bg-dark) 70%);
-    padding: 20px;
-}
-
-.auth-box {
-    width: 100%;
-    max-width: 420px;
-    background-color: var(--bg-panel);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 32px;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
-}
-
-.auth-logo {
-    text-align: center;
-    font-size: 1.8rem;
-    font-weight: 800;
-    letter-spacing: 1px;
-    margin-bottom: 6px;
-}
-
-.logo-accent {
-    color: var(--accent-orange);
-}
-
-.auth-subtitle {
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    margin-bottom: 24px;
-}
-
-.auth-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 20px;
-    background-color: var(--bg-dark);
-    padding: 4px;
-    border-radius: 8px;
-}
-
-.auth-tab {
-    flex: 1;
-    padding: 10px;
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    font-weight: 600;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.auth-tab.active {
-    background-color: var(--bg-card);
-    color: var(--text-main);
-}
-
-.auth-form {
-    display: none;
-}
-
-.auth-form.active {
-    display: block;
-}
-
-.input-group {
-    margin-bottom: 16px;
-}
-
-.input-group label {
-    display: block;
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    margin-bottom: 6px;
-}
-
-.auth-hint {
-    margin-top: 14px;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    text-align: center;
-}
-
-.error-msg {
-    margin-top: 16px;
-    padding: 10px;
-    background-color: rgba(239, 68, 68, 0.15);
-    border: 1px solid var(--danger);
-    color: #fca5a5;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    text-align: center;
-}
-
-/* ==================== APP LAYOUT ==================== */
-.app-container {
-    display: flex;
-    height: 100vh;
-    width: 100vw;
-}
-
-/* Sidebar / Taskleiste */
-.sidebar {
-    width: 270px;
-    background-color: var(--bg-panel);
-    border-right: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
-}
-
-.sidebar-header {
-    padding: 20px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.brand {
-    font-size: 1.3rem;
-    font-weight: 800;
-    margin-bottom: 16px;
-    letter-spacing: 0.5px;
-}
-
-.user-card {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background-color: var(--bg-card);
-    padding: 10px;
-    border-radius: 8px;
-}
-
-.user-avatar {
-    width: 36px;
-    height: 36px;
-    border-radius: 6px;
-    background-color: var(--accent-blue);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    text-transform: uppercase;
-}
-
-.user-info {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.user-name {
-    font-weight: 600;
-    font-size: 0.95rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.user-role {
-    font-size: 0.75rem;
-    color: var(--accent-orange);
-    text-transform: uppercase;
-    font-weight: 700;
-}
-
-.sidebar-nav {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px 12px;
-}
-
-.nav-section-title {
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: var(--text-muted);
-    letter-spacing: 1px;
-    padding: 8px 10px 6px;
-    margin-top: 8px;
-}
-
-.nav-list {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.nav-item {
-    width: 100%;
-    text-align: left;
-    padding: 10px 12px;
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    color: var(--text-main);
-    font-size: 0.92rem;
-    cursor: pointer;
-    transition: background 0.15s;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.nav-item:hover {
-    background-color: var(--bg-hover);
-}
-
-.nav-item.active {
-    background-color: var(--accent-blue);
-    color: #fff;
-    font-weight: 600;
-}
-
-.admin-nav-btn {
-    color: var(--accent-orange);
-}
-.admin-nav-btn.active {
-    background-color: var(--accent-orange);
-    color: #111827;
-}
-
-.empty-team-hint {
-    padding: 8px 12px;
-    font-size: 0.82rem;
-    color: var(--text-muted);
-    font-style: italic;
-}
-
-.sidebar-footer {
-    padding: 16px;
-    border-top: 1px solid var(--border-color);
-}
-
-/* ==================== MAIN CONTENT ==================== */
-.main-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background-color: var(--bg-dark);
-}
-
-.topbar {
-    height: 64px;
-    padding: 0 28px;
-    background-color: var(--bg-panel);
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-}
-
-.topbar h1 {
-    font-size: 1.25rem;
-    font-weight: 700;
-}
-
-.topbar-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.85rem;
-    color: var(--text-muted);
-}
-
-.status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: var(--success);
-}
-
-.content-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 28px;
-}
-
-.view-section {
-    display: none;
-    max-width: 1000px;
-    margin: 0 auto;
-}
-
-.view-section.active {
-    display: block;
-}
-
-.card {
-    background-color: var(--bg-panel);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 24px;
-}
-
-.card h2 {
-    margin-bottom: 10px;
-    font-size: 1.2rem;
-}
-
-.muted-text {
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    margin-bottom: 16px;
-}
-
-.placeholder-box {
-    margin-top: 16px;
-    padding: 30px;
-    border: 2px dashed var(--border-color);
-    border-radius: 8px;
-    text-align: center;
-    color: var(--text-muted);
-}
-
-/* Tutorial */
-.tutorial-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-    margin-top: 20px;
-}
-
-.tutorial-step {
-    background-color: var(--bg-card);
-    padding: 18px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-}
-
-.tutorial-step h3 {
-    font-size: 1rem;
-    color: var(--accent-orange);
-    margin-bottom: 8px;
-}
-
-.tutorial-step p {
-    font-size: 0.88rem;
-    color: var(--text-muted);
-    line-height: 1.45;
-}
-
-/* News */
-.news-list {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
-.news-item {
-    background-color: var(--bg-panel);
-    border: 1px solid var(--border-color);
-    border-left: 4px solid var(--accent-blue);
-    border-radius: 8px;
-    padding: 20px;
-}
-
-.news-meta {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    margin-bottom: 6px;
-}
-
-.news-item h3 {
-    margin-bottom: 8px;
-    font-size: 1.1rem;
-}
-
-.news-item p {
-    font-size: 0.92rem;
-    line-height: 1.5;
-    color: #d1d5db;
-}
-
-.inline-stack-form {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 12px;
-}
-
-/* Forum Chat */
-.chat-card {
-    display: flex;
-    flex-direction: column;
-    height: calc(100vh - 140px);
-    padding: 0;
-    overflow: hidden;
-}
-
-.chat-header {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.chat-header h2 {
-    margin-bottom: 2px;
-}
-
-.chat-header p {
-    margin-bottom: 0;
-}
-
-.chat-messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.chat-msg {
-    background-color: var(--bg-card);
-    padding: 10px 14px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    max-width: 85%;
-}
-
-.chat-msg.own-msg {
-    align-self: flex-end;
-    background-color: #1e3a5f;
-    border-color: #2b5282;
-}
-
-.chat-msg-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 4px;
-    font-size: 0.8rem;
-}
-
-.chat-author {
-    font-weight: 700;
-    color: var(--accent-blue);
-}
-
-.chat-author.admin-badge {
-    color: var(--accent-orange);
-}
-
-.chat-time {
-    color: var(--text-muted);
-    font-size: 0.72rem;
-}
-
-.chat-text {
-    font-size: 0.93rem;
-    line-height: 1.4;
-    word-wrap: break-word;
-}
-
-.chat-input-area {
-    padding: 16px;
-    border-top: 1px solid var(--border-color);
-    display: flex;
-    gap: 10px;
-    background-color: var(--bg-panel);
-}
-
-/* Team View */
-.team-header {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 24px;
-}
-
-.team-badge {
-    width: 60px;
-    height: 60px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, var(--accent-blue), var(--accent-orange));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.6rem;
-    font-weight: 800;
-    text-transform: uppercase;
-}
-
-.team-details-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 14px;
-}
-
-.stat-box {
-    background-color: var(--bg-card);
-    padding: 14px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.stat-label {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-}
-
-.stat-value {
-    font-size: 1.1rem;
-    font-weight: 700;
-}
-
-/* Admin Panel */
-.admin-grid {
-    display: grid;
-    gap: 20px;
-}
-
-.inline-form {
-    display: flex;
-    gap: 10px;
-}
-
-.feedback-msg {
-    margin-top: 12px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 0.85rem;
-}
-
-.feedback-msg.success {
-    background-color: rgba(16, 185, 129, 0.15);
-    border: 1px solid var(--success);
-    color: #6ee7b7;
-}
-
-.feedback-msg.error {
-    background-color: rgba(239, 68, 68, 0.15);
-    border: 1px solid var(--danger);
-    color: #fca5a5;
-}
-
-.admin-list {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 12px;
-}
-
-.admin-list-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background-color: var(--bg-card);
-    padding: 10px 14px;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
+// ==================== KONFIGURATION & SPEICHER-SCHLÜSSEL ====================
+const ADMIN_USERNAME = "Admin";
+const DEFAULT_ADMIN_PASSWORD = "admin123";
+
+const STORAGE_KEYS = {
+    PLAYERS: "hltv_game_players",
+    ADMIN_PASS: "hltv_game_admin_password",
+    MESSAGES: "hltv_game_forum_messages",
+    NEWS: "hltv_game_news",
+    SESSION: "hltv_game_session"
+};
+
+// ==================== ZUSTAND (STATE) ====================
+let currentUser = null; // { username: string, role: 'admin' | 'player' }
+let currentView = "tutorial";
+let activeTeamUsername = null;
+
+// ==================== HILFSFUNKTIONEN ====================
+function escapeHTML(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function generateRandomPassword(length = 8) {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    let password = "";
+    if (window.crypto && window.crypto.getRandomValues) {
+        const array = new Uint32Array(length);
+        window.crypto.getRandomValues(array);
+        for (let i = 0; i < length; i++) {
+            password += chars.charAt(array[i] % chars.length);
+        }
+    } else {
+        for (let i = 0; i < length; i++) {
+            password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+    }
+    return password;
+}
+
+function getAdminPassword() {
+    return localStorage.getItem(STORAGE_KEYS.ADMIN_PASS) || DEFAULT_ADMIN_PASSWORD;
+}
+
+function saveAdminPassword(newPass) {
+    localStorage.setItem(STORAGE_KEYS.ADMIN_PASS, newPass);
+}
+
+function getPlayers() {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.PLAYERS)) || [];
+    // Abwärtskompatibilität falls noch alte String-Einträge im Speicher liegen
+    let migrated = false;
+    const normalized = raw.map(item => {
+        if (typeof item === "string") {
+            migrated = true;
+            return {
+                username: item,
+                password: generateRandomPassword(8),
+                passwordChanged: false
+            };
+        }
+        return item;
+    });
+
+    if (migrated) {
+        savePlayers(normalized);
+    }
+    return normalized;
+}
+
+function savePlayers(players) {
+    localStorage.setItem(STORAGE_KEYS.PLAYERS, JSON.stringify(players));
+}
+
+function getMessages() {
+    return JSON.parse(localStorage.getItem(STORAGE_KEYS.MESSAGES)) || [];
+}
+
+function saveMessages(messages) {
+    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
+}
+
+function getNews() {
+    const stored = localStorage.getItem(STORAGE_KEYS.NEWS);
+    if (stored) return JSON.parse(stored);
+
+    // Standard-News beim ersten Start
+    const defaultNews = [
+        {
+            id: 1,
+            title: "Neue Saison im HLTV Manager gestartet!",
+            body: "Die Server sind online. Sobald der Admin eure Benutzernamen und Passwörter erstellt, könnt ihr euch anmelden, euren Teambereich einsehen und im Forum diskutieren.",
+            author: "Admin",
+            date: new Date().toLocaleDateString("de-DE")
+        }
+    ];
+    localStorage.setItem(STORAGE_KEYS.NEWS, JSON.stringify(defaultNews));
+    return defaultNews;
+}
+
+function saveNews(newsList) {
+    localStorage.setItem(STORAGE_KEYS.NEWS, JSON.stringify(newsList));
+}
+
+// ==================== INITIALISIERUNG ====================
+document.addEventListener("DOMContentLoaded", () => {
+    setupAuthEvents();
+    setupAppEvents();
+    setupPasswordModalEvents();
+    checkExistingSession();
+
+    // Live-Synchronisation zwischen mehreren offenen Browser-Tabs
+    window.addEventListener("storage", (e) => {
+        if (!currentUser) return;
+
+        if (e.key === STORAGE_KEYS.PLAYERS) {
+            const players = getPlayers();
+            if (currentUser.role === "player") {
+                if (!players.some(p => p.username === currentUser.username)) {
+                    logout();
+                    return;
+                }
+            }
+            renderTeamSidebar();
+            renderAdminPlayerList();
+            if (currentView === "team" && activeTeamUsername && !players.some(p => p.username === activeTeamUsername)) {
+                switchView("tutorial");
+            }
+        }
+
+        if (e.key === STORAGE_KEYS.MESSAGES) {
+            renderForumMessages();
+        }
+
+        if (e.key === STORAGE_KEYS.NEWS) {
+            renderNews();
+        }
+    });
+});
+
+// ==================== LOGIN & AUTHENTIFIZIERUNG ====================
+function setupAuthEvents() {
+    const tabs = document.querySelectorAll(".auth-tab");
+    const playerForm = document.getElementById("player-login-form");
+    const adminForm = document.getElementById("admin-login-form");
+    const errorBox = document.getElementById("auth-error");
+
+    tabs.forEach(tab => {
+        tab.addEventListener("click", () => {
+            tabs.forEach(t => t.classList.remove("active"));
+            tab.classList.add("active");
+            errorBox.classList.add("hidden");
+
+            if (tab.dataset.tab === "player") {
+                playerForm.classList.add("active");
+                adminForm.classList.remove("active");
+            } else {
+                adminForm.classList.add("active");
+                playerForm.classList.remove("active");
+            }
+        });
+    });
+
+    // Spieler-Login (Benutzername + Passwort)
+    playerForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const usernameInput = document.getElementById("player-username").value.trim();
+        const passwordInput = document.getElementById("player-password").value;
+        const players = getPlayers();
+
+        const foundPlayer = players.find(p => p.username === usernameInput);
+
+        if (!foundPlayer || foundPlayer.password !== passwordInput) {
+            showAuthError("Falscher Benutzername oder falsches Passwort!");
+            return;
+        }
+
+        loginUser({ username: foundPlayer.username, role: "player" });
+        playerForm.reset();
+    });
+
+    // Admin-Login
+    adminForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const user = document.getElementById("admin-username").value.trim();
+        const pass = document.getElementById("admin-password").value;
+
+        if (user === ADMIN_USERNAME && pass === getAdminPassword()) {
+            loginUser({ username: user, role: "admin" });
+            adminForm.reset();
+        } else {
+            showAuthError("Falscher Admin-Name oder falsches Passwort!");
+        }
+    });
+}
+
+function showAuthError(msg) {
+    const errorBox = document.getElementById("auth-error");
+    errorBox.textContent = msg;
+    errorBox.classList.remove("hidden");
+}
+
+function loginUser(user) {
+    currentUser = user;
+    sessionStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(user));
+    document.getElementById("auth-error").classList.add("hidden");
+    showApp();
+}
+
+function checkExistingSession() {
+    const saved = sessionStorage.getItem(STORAGE_KEYS.SESSION);
+    if (!saved) return;
+
+    const parsed = JSON.parse(saved);
+    if (parsed.role === "player" && !getPlayers().some(p => p.username === parsed.username)) {
+        sessionStorage.removeItem(STORAGE_KEYS.SESSION);
+        return;
+    }
+
+    currentUser = parsed;
+    showApp();
+}
+
+function logout() {
+    currentUser = null;
+    sessionStorage.removeItem(STORAGE_KEYS.SESSION);
+    closePasswordModal();
+    document.getElementById("app-screen").classList.add("hidden");
+    document.getElementById("auth-screen").classList.remove("hidden");
+}
+
+// ==================== HAUPTANWENDUNG ====================
+function showApp() {
+    document.getElementById("auth-screen").classList.add("hidden");
+    document.getElementById("app-screen").classList.remove("hidden");
+
+    // Benutzeranzeige in Sidebar aktualisieren
+    document.getElementById("current-user-name").textContent = currentUser.username;
+    document.getElementById("current-user-role").textContent = currentUser.role === "admin" ? "Administrator" : "Spieler";
+    document.getElementById("user-avatar").textContent = currentUser.username.charAt(0);
+
+    // Admin-Elemente ein-/ausblenden
+    const adminNav = document.getElementById("admin-nav-li");
+    const adminNewsCreator = document.getElementById("admin-news-creator");
+    if (currentUser.role === "admin") {
+        adminNav.classList.remove("hidden");
+        adminNewsCreator.classList.remove("hidden");
+    } else {
+        adminNav.classList.add("hidden");
+        adminNewsCreator.classList.add("hidden");
+    }
+
+    renderTeamSidebar();
+    renderAdminPlayerList();
+    renderNews();
+    renderForumMessages();
+    switchView("tutorial");
+}
+
+function setupAppEvents() {
+    // Abmelden
+    document.getElementById("logout-btn").addEventListener("click", logout);
+
+    // Hauptnavigation (statische Menüpunkte)
+    document.getElementById("main-nav-list").addEventListener("click", (e) => {
+        const btn = e.target.closest(".nav-item");
+        if (!btn) return;
+        switchView(btn.dataset.view);
+    });
+
+    // Dynamische Team-Navigation
+    document.getElementById("team-nav-list").addEventListener("click", (e) => {
+        const btn = e.target.closest(".nav-item");
+        if (!btn) return;
+        openTeamView(btn.dataset.team);
+    });
+
+    // Admin: Neuen Benutzernamen hinzufügen + zufälliges Passwort generieren
+    document.getElementById("add-player-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (currentUser?.role !== "admin") return;
+
+        const input = document.getElementById("new-player-username");
+        const newName = input.value.trim();
+        const feedback = document.getElementById("admin-feedback");
+
+        if (!newName) return;
+
+        const players = getPlayers();
+        if (players.some(p => p.username === newName) || newName === ADMIN_USERNAME) {
+            feedback.textContent = `Der Benutzername "${newName}" existiert bereits!`;
+            feedback.className = "feedback-msg error";
+            feedback.classList.remove("hidden");
+            return;
+        }
+
+        const generatedPassword = generateRandomPassword(8);
+        players.push({
+            username: newName,
+            password: generatedPassword,
+            passwordChanged: false
+        });
+        savePlayers(players);
+        input.value = "";
+
+        feedback.innerHTML = `Spieler <strong>${escapeHTML(newName)}</strong> wurde erstellt!<br>Zufälliges Passwort zum Weitergeben: <code class="password-pill">${escapeHTML(generatedPassword)}</code>`;
+        feedback.className = "feedback-msg success";
+        feedback.classList.remove("hidden");
+
+        renderTeamSidebar();
+        renderAdminPlayerList();
+    });
+
+    // Admin-Spielerliste Aktionen (Kopieren, Neues Passwort, Entfernen)
+    document.getElementById("admin-player-list").addEventListener("click", (e) => {
+        if (currentUser?.role !== "admin") return;
+
+        const copyBtn = e.target.closest("[data-action='copy-pw']");
+        if (copyBtn) {
+            const pw = copyBtn.dataset.password;
+            navigator.clipboard?.writeText(pw).then(() => {
+                const original = copyBtn.textContent;
+                copyBtn.textContent = "Kopiert!";
+                setTimeout(() => { copyBtn.textContent = original; }, 1200);
+            });
+            return;
+        }
+
+        const resetBtn = e.target.closest("[data-action='reset-pw']");
+        if (resetBtn) {
+            const username = resetBtn.dataset.username;
+            const players = getPlayers();
+            const player = players.find(p => p.username === username);
+            if (!player) return;
+
+            const newPw = generateRandomPassword(8);
+            player.password = newPw;
+            player.passwordChanged = false;
+            savePlayers(players);
+
+            const feedback = document.getElementById("admin-feedback");
+            feedback.innerHTML = `Neues Passwort für <strong>${escapeHTML(username)}</strong>: <code class="password-pill">${escapeHTML(newPw)}</code>`;
+            feedback.className = "feedback-msg success";
+            feedback.classList.remove("hidden");
+
+            renderAdminPlayerList();
+            return;
+        }
+
+        const removeBtn = e.target.closest("[data-action='remove']");
+        if (removeBtn) {
+            const username = removeBtn.dataset.username;
+            const players = getPlayers().filter(p => p.username !== username);
+            savePlayers(players);
+
+            renderTeamSidebar();
+            renderAdminPlayerList();
+
+            if (currentView === "team" && activeTeamUsername === username) {
+                switchView("admin-panel");
+            }
+        }
+    });
+
+    // Forum Chat Nachricht senden
+    document.getElementById("chat-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const input = document.getElementById("chat-input");
+        const text = input.value.trim();
+        if (!text || !currentUser) return;
+
+        const messages = getMessages();
+        messages.push({
+            id: Date.now(),
+            author: currentUser.username,
+            role: currentUser.role,
+            text: text,
+            time: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+        });
+
+        saveMessages(messages);
+        input.value = "";
+        renderForumMessages();
+    });
+
+    // Admin: News posten
+    document.getElementById("news-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (currentUser?.role !== "admin") return;
+
+        const titleInput = document.getElementById("news-title-input");
+        const bodyInput = document.getElementById("news-body-input");
+
+        const news = getNews();
+        news.unshift({
+            id: Date.now(),
+            title: titleInput.value.trim(),
+            body: bodyInput.value.trim(),
+            author: currentUser.username,
+            date: new Date().toLocaleDateString("de-DE")
+        });
+
+        saveNews(news);
+        titleInput.value = "";
+        bodyInput.value = "";
+        renderNews();
+    });
+}
+
+// ==================== PASSWORT ÄNDERN (MODAL) ====================
+function setupPasswordModalEvents() {
+    const modal = document.getElementById("password-modal");
+    const openBtn = document.getElementById("open-password-modal-btn");
+    const closeBtn = document.getElementById("close-password-modal");
+    const cancelBtn = document.getElementById("cancel-password-modal");
+    const form = document.getElementById("change-password-form");
+
+    openBtn.addEventListener("click", () => {
+        form.reset();
+        document.getElementById("password-feedback").classList.add("hidden");
+        modal.classList.remove("hidden");
+    });
+
+    closeBtn.addEventListener("click", closePasswordModal);
+    cancelBtn.addEventListener("click", closePasswordModal);
+
+    modal.addEventListener("click", (e) => {
+        if (e.target === modal) closePasswordModal();
+    });
+
+    form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+
+        const oldPw = document.getElementById("old-password").value;
+        const newPw = document.getElementById("new-password").value;
+        const confirmPw = document.getElementById("confirm-password").value;
+        const feedback = document.getElementById("password-feedback");
+
+        if (newPw.length < 4) {
+            showPasswordFeedback("Das neue Passwort muss mindestens 4 Zeichen lang sein.", "error");
+            return;
+        }
+
+        if (newPw !== confirmPw) {
+            showPasswordFeedback("Die neuen Passwörter stimmen nicht überein.", "error");
+            return;
+        }
+
+        if (currentUser.role === "admin") {
+            if (oldPw !== getAdminPassword()) {
+                showPasswordFeedback("Das aktuelle Passwort ist falsch.", "error");
+                return;
+            }
+            saveAdminPassword(newPw);
+        } else {
+            const players = getPlayers();
+            const player = players.find(p => p.username === currentUser.username);
+            if (!player || player.password !== oldPw) {
+                showPasswordFeedback("Das aktuelle Passwort ist falsch.", "error");
+                return;
+            }
+            player.password = newPw;
+            player.passwordChanged = true;
+            savePlayers(players);
+            renderAdminPlayerList();
+        }
+
+        form.reset();
+        showPasswordFeedback("Passwort erfolgreich geändert!", "success");
+        setTimeout(() => {
+            if (!modal.classList.contains("hidden")) {
+                closePasswordModal();
+            }
+        }, 1200);
+    });
+}
+
+function showPasswordFeedback(msg, type) {
+    const feedback = document.getElementById("password-feedback");
+    feedback.textContent = msg;
+    feedback.className = `feedback-msg ${type}`;
+    feedback.classList.remove("hidden");
+}
+
+function closePasswordModal() {
+    document.getElementById("password-modal").classList.add("hidden");
+    document.getElementById("change-password-form").reset();
+    document.getElementById("password-feedback").classList.add("hidden");
+}
+
+// ==================== ANSICHTEN WECHSELN ====================
+const VIEW_TITLES = {
+    "tutorial": "Tutorial",
+    "news": "HLTV - News",
+    "forum": "HLTV - Forum",
+    "managing": "Managing",
+    "transfermarkt": "Transfermarkt",
+    "pack-opening": "Pack Opening",
+    "admin-panel": "Admin-Panel"
+};
+
+function switchView(viewName) {
+    currentView = viewName;
+    activeTeamUsername = null;
+
+    document.querySelectorAll(".view-section").forEach(sec => sec.classList.remove("active"));
+    document.querySelectorAll(".nav-item").forEach(btn => btn.classList.remove("active"));
+
+    const targetSection = document.getElementById(`view-${viewName}`);
+    if (targetSection) targetSection.classList.add("active");
+
+    const targetBtn = document.querySelector(`#main-nav-list .nav-item[data-view="${viewName}"]`);
+    if (targetBtn) targetBtn.classList.add("active");
+
+    document.getElementById("view-title").textContent = VIEW_TITLES[viewName] || "Übersicht";
+
+    if (viewName === "forum") {
+        scrollChatToBottom();
+    }
+}
+
+function openTeamView(username) {
+    currentView = "team";
+    activeTeamUsername = username;
+
+    document.querySelectorAll(".view-section").forEach(sec => sec.classList.remove("active"));
+    document.querySelectorAll(".nav-item").forEach(btn => btn.classList.remove("active"));
+
+    document.getElementById("view-team").classList.add("active");
+
+    const teamBtn = document.querySelector(`#team-nav-list .nav-item[data-team="${CSS.escape(username)}"]`);
+    if (teamBtn) teamBtn.classList.add("active");
+
+    document.getElementById("view-title").textContent = `Team ${username}`;
+    document.getElementById("team-view-badge").textContent = username.charAt(0);
+    document.getElementById("team-view-name").textContent = `Team ${username}`;
+    document.getElementById("team-view-owner").textContent = `Manager: ${username}`;
+    document.getElementById("team-view-owner-inline").textContent = username;
+}
+
+// ==================== RENDERING FUNKTIONEN ====================
+function renderTeamSidebar() {
+    const list = document.getElementById("team-nav-list");
+    const players = getPlayers();
+
+    if (players.length === 0) {
+        list.innerHTML = `<li class="empty-team-hint">Noch keine Spieler erstellt</li>`;
+        return;
+    }
+
+    list.innerHTML = players.map(player => {
+        const isActive = currentView === "team" && activeTeamUsername === player.username ? "active" : "";
+        return `
+            <li>
+                <button class="nav-item ${isActive}" data-team="${escapeHTML(player.username)}">
+                    🛡️ Team ${escapeHTML(player.username)}
+                </button>
+            </li>
+        `;
+    }).join("");
+}
+
+function renderAdminPlayerList() {
+    const list = document.getElementById("admin-player-list");
+    const countSpan = document.getElementById("player-count");
+    const players = getPlayers();
+
+    countSpan.textContent = players.length;
+
+    if (players.length === 0) {
+        list.innerHTML = `<li class="empty-team-hint">Noch keine Benutzernamen angelegt.</li>`;
+        return;
+    }
+
+    list.innerHTML = players.map(player => {
+        const pwDisplay = player.passwordChanged
+            ? `<span class="password-changed-tag">(Passwort vom Spieler geändert)</span>`
+            : `<code class="password-pill">${escapeHTML(player.password)}</code>
+               <button class="btn btn-secondary btn-small" data-action="copy-pw" data-password="${escapeHTML(player.password)}">Kopieren</button>`;
+
+        return `
+            <li class="admin-list-item">
+                <div class="admin-player-info">
+                    <strong>${escapeHTML(player.username)}</strong>
+                    <span>(Team ${escapeHTML(player.username)})</span>
+                    ${pwDisplay}
+                </div>
+                <div class="admin-actions">
+                    <button class="btn btn-secondary btn-small" data-action="reset-pw" data-username="${escapeHTML(player.username)}">Neues PW</button>
+                    <button class="btn btn-danger" data-action="remove" data-username="${escapeHTML(player.username)}">Entfernen</button>
+                </div>
+            </li>
+        `;
+    }).join("");
+}
+
+function renderForumMessages() {
+    const container = document.getElementById("chat-messages");
+    const messages = getMessages();
+
+    if (messages.length === 0) {
+        container.innerHTML = `<div class="empty-team-hint" style="text-align:center; margin-top: 20px;">Noch keine Nachrichten im Forum. Schreib die erste Nachricht!</div>`;
+        return;
+    }
+
+    container.innerHTML = messages.map(msg => {
+        const isOwn = currentUser && msg.author === currentUser.username;
+        const badgeClass = msg.role === "admin" ? "admin-badge" : "";
+        const roleLabel = msg.role === "admin" ? " [ADMIN]" : "";
+
+        return `
+            <div class="chat-msg ${isOwn ? "own-msg" : ""}">
+                <div class="chat-msg-header">
+                    <span class="chat-author ${badgeClass}">${escapeHTML(msg.author)}${roleLabel}</span>
+                    <span class="chat-time">${escapeHTML(msg.time)}</span>
+                </div>
+                <div class="chat-text">${escapeHTML(msg.text)}</div>
+            </div>
+        `;
+    }).join("");
+
+    scrollChatToBottom();
+}
+
+function scrollChatToBottom() {
+    const container = document.getElementById("chat-messages");
+    if (container) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function renderNews() {
+    const container = document.getElementById("news-feed");
+    const newsList = getNews();
+
+    container.innerHTML = newsList.map(item => `
+        <article class="news-item">
+            <div class="news-meta">Veröffentlicht am ${escapeHTML(item.date)} von ${escapeHTML(item.author)}</div>
+            <h3>${escapeHTML(item.title)}</h3>
+            <p>${escapeHTML(item.body)}</p>
+        </article>
+    `).join("");
 }
