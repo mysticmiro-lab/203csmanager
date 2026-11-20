@@ -58,7 +58,7 @@
         selectedTeamUsername = team.username;
         const current = user();
 
-        // Let the app switch to the chosen team first, then render the controls for that exact team.
+        // The app view must be activated before showing the selected team's details.
         if (typeof window.openTeamView === "function") window.openTeamView(team.username);
         document.getElementById("team-directory")?.classList.add("hidden");
         document.getElementById("team-details")?.classList.remove("hidden");
@@ -91,10 +91,7 @@
             actions.className = "team-manager-actions";
             header.append(actions);
         }
-
-        // Clear any previously rendered form before deciding whether this team belongs to the viewer.
         actions.replaceChildren();
-        document.querySelectorAll("#rename-team-form").forEach(form => form.remove());
         const isOwnTeam = current?.role === "player" && current.username === team.username;
         if (isOwnTeam) {
             const form = document.createElement("form");
@@ -114,9 +111,13 @@
 
     function showDirectory() {
         selectedTeamUsername = null;
+        // Re-activate the outer team view as well as the directory panel, so navigation
+        // remains reliable after returning from any team, including repeated visits.
+        if (typeof window.switchView === "function") window.switchView("team");
         document.getElementById("team-details")?.classList.add("hidden");
         document.getElementById("team-directory")?.classList.remove("hidden");
-        document.getElementById("view-title").textContent = "Meine Teams";
+        const title = document.getElementById("view-title");
+        if (title) title.textContent = "Meine Teams";
         renderDirectory();
     }
 
@@ -148,19 +149,28 @@
             if (event.target.closest('[data-view="team"]')) showDirectory();
             if (event.target.closest('[data-view="ranking"]')) renderRanking();
         });
-        document.getElementById("team-directory-list")?.addEventListener("click", event => {
-            const button = event.target.closest("[data-team-open]");
-            if (button) renderTeam(button.dataset.teamOpen);
-        });
-        document.getElementById("view-team")?.addEventListener("click", event => {
-            if (event.target.closest("#back-to-teams-btn")) showDirectory();
-        });
+
+        // Delegate from document rather than the list node: this keeps clicks working even
+        // if another app handler replaces or rebuilds the directory markup.
+        document.addEventListener("click", event => {
+            const back = event.target.closest("#back-to-teams-btn");
+            if (back) {
+                event.preventDefault();
+                showDirectory();
+                return;
+            }
+            const teamButton = event.target.closest("[data-team-open]");
+            if (teamButton) {
+                event.preventDefault();
+                renderTeam(teamButton.dataset.teamOpen);
+            }
+        }, true);
+
         document.getElementById("view-team")?.addEventListener("submit", event => {
             if (!event.target.matches("#rename-team-form")) return;
             event.preventDefault();
             const current = user();
             const owner = event.target.dataset.owner;
-            // Never redirect or rename a different team's record from a stale/foreign form.
             if (current?.role !== "player" || !selectedTeamUsername || owner !== selectedTeamUsername || current.username !== selectedTeamUsername) {
                 event.target.remove();
                 return;
