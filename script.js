@@ -498,6 +498,7 @@ const VIEW_TITLES = {
     "managing": "Managing",
     "transfermarkt": "Transfermarkt",
     "pack-opening": "Pack Opening",
+    "turniere": "Turniere",
     "admin-panel": "Admin-Panel"
 };
 
