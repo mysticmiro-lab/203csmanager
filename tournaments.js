@@ -743,6 +743,37 @@ export function createTournamentsModule(deps) {
         return { participants, autoSlots, matchSlots, matchWinners, matchSchedules, swissStandings, rrStandings, stageAdvancers };
     }
 
+    function buildMatchSlotMarkup(tId, match, slotIdx, assignedUid, winnerUid, participants, admin, preferredUids = []) {
+        const resolved = getResolvedParticipant(assignedUid, participants);
+        const isWin = Boolean(winnerUid && assignedUid && winnerUid === assignedUid);
+        const isLoss = Boolean(winnerUid && assignedUid && winnerUid !== assignedUid);
+
+        if (!admin) {
+            if (!resolved) {
+                const hint = match.slotHints?.[slotIdx] ? `TBD (${match.slotHints[slotIdx]})` : "TBD";
+                return `<div class="match-team-row tbd"><span>${esc(hint)}</span><span>–</span></div>`;
+            }
+            return `<div class="match-team-row ${isWin ? "winner" : (isLoss ? "loser" : "")}"><span>${resolved.icon} ${esc(resolved.displayName)}</span><span style="font-size:.72rem;">${isWin ? "🏆 Sieger" : (resolved.type === "player" ? "Spieler" : "VRS")}</span></div>`;
+        }
+
+        const prefSet = new Set(preferredUids.filter(Boolean));
+        const sorted = [...participants].sort((a, b) => (prefSet.has(a.uid) ? 0 : 1) - (prefSet.has(b.uid) ? 0 : 1));
+        const options = sorted.map(p => {
+            const info = getResolvedParticipant(p.uid, participants);
+            return `<option value="${esc(p.uid)}" ${p.uid === assignedUid ? "selected" : ""}>${prefSet.has(p.uid) ? "★ " : ""}${info.icon} ${esc(info.displayName)}</option>`;
+        }).join("");
+        const tbd = match.slotHints?.[slotIdx] ? `-- TBD (${match.slotHints[slotIdx]}) --` : "-- TBD (Offen) --";
+
+        return `
+            <div class="match-admin-slot">
+                <select class="match-team-select ${isWin ? "is-winner" : ""}" data-action="set-match-slot" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" data-slot="${slotIdx}">
+                    <option value="">${esc(tbd)}</option>${options}
+                </select>
+                <button type="button" class="btn-winner-toggle ${isWin ? "active" : ""}" data-action="toggle-winner" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" data-uid="${esc(assignedUid || "")}" ${!assignedUid ? "disabled" : ""} title="Als Sieger festlegen">🏆</button>
+            </div>
+        `;
+    }
+    
     // ==================== RENDERING & MATCH-KARTEN ====================
     function renderMatchCard(tId, match, defaultDateLabel, dayLabel, matchFormat, graph, admin, preferred = []) {
         const slots = graph.matchSlots[match.id] || [null, null];
