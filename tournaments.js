@@ -1754,6 +1754,25 @@ export function createTournamentsModule(deps) {
                 return;
             }
 
+            if (e.target.dataset.action === "set-match-date") {
+                const tId = e.target.dataset.tournamentId;
+                const mId = e.target.dataset.matchId;
+                const val = e.target.value || "";
+                const t = getTournamentById(tId);
+                if (!t) return;
+                const clone = structuredClone(t);
+                clone.matchSchedules = clone.matchSchedules || {};
+                clone.matchSchedules[mId] = clone.matchSchedules[mId] || {};
+                if (val) {
+                    clone.matchSchedules[mId].date = val;
+                } else {
+                    delete clone.matchSchedules[mId].date;
+                    if (!clone.matchSchedules[mId].time) delete clone.matchSchedules[mId];
+                }
+                await saveTournamentDoc(clone);
+                return;
+            }
+
             if (e.target.dataset.action === "set-match-time") {
                 const tId = e.target.dataset.tournamentId;
                 const mId = e.target.dataset.matchId;
@@ -1761,11 +1780,13 @@ export function createTournamentsModule(deps) {
                 const t = getTournamentById(tId);
                 if (!t) return;
                 const clone = structuredClone(t);
-                clone.matchTimes = clone.matchTimes || {};
+                clone.matchSchedules = clone.matchSchedules || {};
+                clone.matchSchedules[mId] = clone.matchSchedules[mId] || {};
                 if (val) {
-                    clone.matchTimes[mId] = val;
+                    clone.matchSchedules[mId].time = val;
                 } else {
-                    delete clone.matchTimes[mId];
+                    delete clone.matchSchedules[mId].time;
+                    if (!clone.matchSchedules[mId].date) delete clone.matchSchedules[mId];
                 }
                 await saveTournamentDoc(clone);
                 return;
