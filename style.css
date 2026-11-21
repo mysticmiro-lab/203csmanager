@@ -794,6 +794,32 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent-blue); }
     border-radius: 8px;
     background: rgba(59,130,246,.07);
 }
+.te-stages-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 10px 0;
+}
+.te-stage-card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(30, 41, 59, 0.4);
+    padding: 12px 14px;
+}
+.te-stage-toggle {
+    cursor: pointer;
+    font-size: 0.95rem;
+    color: var(--text-main);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+}
+.te-stage-body {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
 
 @media (max-width: 760px) {
     .app-container { flex-direction: column; }
