@@ -55,11 +55,76 @@ export function createTournamentsModule(deps) {
         return { days, nextOffset: dayOffset + days.length };
     }
 
-    // Double Elimination Playoff-Bracket (16er & 8er)
-    function buildDoubleElimPlayoffs(size, startDate, dayOffset, defaultFormat, finalFormat) {
+    // Double Elimination Playoff- & Quali-Brackets
+    function buildDoubleElimPlayoffs(size, startDate, dayOffset, defaultFormat, finalFormat, isQualifierMode = false) {
         let offset = dayOffset;
+
+        // 16er Double Elimination Qualifikation (20 Matches -> genau 8 Qualifikanten: 4 Upper + 4 Lower)
+        if (size === 16 && isQualifierMode) {
+            const ubR1 = Array.from({ length: 8 }, (_, i) => ({
+                id: `de-ub-r1-${i + 1}`,
+                label: `UB Achtelfinale ${i + 1}`,
+                format: defaultFormat,
+                slotHints: [`Seed #${i * 2 + 1}`, `Seed #${i * 2 + 2}`]
+            }));
+            const d1 = chunkIntoDays(ubR1, startDate, offset, 4, "Play-In Tag");
+            offset = d1.nextOffset;
+
+            const ubR2 = Array.from({ length: 4 }, (_, i) => ({
+                id: `de-ub-r2-${i + 1}`,
+                label: `UB Qualifikationsrunde ${i + 1}`,
+                format: defaultFormat,
+                fromMatches: [`de-ub-r1-${i * 2 + 1}`, `de-ub-r1-${i * 2 + 2}`],
+                slotHints: [`Sieger UB AF #${i * 2 + 1}`, `Sieger UB AF #${i * 2 + 2}`],
+                isQualifyingMatch: true,
+                qualifierSlotNumber: i + 1
+            }));
+            const d2 = chunkIntoDays(ubR2, startDate, offset, 4, "Play-In Tag");
+            offset = d2.nextOffset;
+
+            const lbR1 = Array.from({ length: 4 }, (_, i) => ({
+                id: `de-lb-r1-${i + 1}`,
+                label: `LB Runde 1 #${i + 1}`,
+                format: defaultFormat,
+                fromLosers: [`de-ub-r1-${i * 2 + 1}`, `de-ub-r1-${i * 2 + 2}`],
+                slotHints: [`Verlierer UB AF #${i * 2 + 1}`, `Verlierer UB AF #${i * 2 + 2}`]
+            }));
+            const d3 = chunkIntoDays(lbR1, startDate, offset, 4, "Play-In Tag");
+            offset = d3.nextOffset;
+
+            const lbR2 = Array.from({ length: 4 }, (_, i) => ({
+                id: `de-lb-r2-${i + 1}`,
+                label: `LB Qualifikationsrunde ${i + 1}`,
+                format: defaultFormat,
+                fromMixed: [{ type: "winner", id: `de-lb-r1-${i + 1}` }, { type: "loser", id: `de-ub-r2-${4 - i}` }],
+                slotHints: [`Sieger LB R1 #${i + 1}`, `Absteiger UB Quali #${4 - i}`],
+                isQualifyingMatch: true,
+                qualifierSlotNumber: 4 + i + 1
+            }));
+            const d4 = chunkIntoDays(lbR2, startDate, offset, 4, "Play-In Tag");
+            offset = d4.nextOffset;
+
+            return {
+                isDoubleElim: true,
+                isQualifierOnly: true,
+                size: 16,
+                qualifierCount: 8,
+                qualifierMatchIds: [
+                    "de-ub-r2-1", "de-ub-r2-2", "de-ub-r2-3", "de-ub-r2-4",
+                    "de-lb-r2-1", "de-lb-r2-2", "de-lb-r2-3", "de-lb-r2-4"
+                ],
+                rounds: [
+                    { id: "ub-r1", name: "UB Achtelfinale", defaultFormat, subtitle: "8 Matches (BO3) · Verlierer in Lower Bracket", days: d1.days },
+                    { id: "ub-r2", name: "UB Qualifikationsrunde", defaultFormat, subtitle: "4 Matches (BO3) · Sieger (4) qualifiziert!", days: d2.days },
+                    { id: "lb-r1", name: "LB Runde 1", defaultFormat, subtitle: "4 K.-o.-Matches (BO3) · Verlierer scheiden aus", days: d3.days },
+                    { id: "lb-r2", name: "LB Qualifikationsrunde", defaultFormat, subtitle: "4 Matches (BO3) · Sieger (4) qualifiziert!", days: d4.days }
+                ]
+            };
+        }
+
+        // Vollständiges 16er Double Elimination (bis Grand Final)
         if (size === 16) {
-            const ubR1 = Array.from({ length: 8 }, (_, i) => ({ id: `de-ub-r1-${i + 1}`, label: `UB Achtelfinale ${i + 1}`, format: defaultFormat, slotHints: [`Seed #${i * 2 + 1}`, `Seed #${i * 2 + 2}`] }));
+            const ubR1 = Array.from({ length: 8 }, (_, i) => ({ id: `de-ub-r1-${i + 1}`, label: `UB Achtelfinale ${i + 1}`, format: defaultFormat }));
             const d1 = chunkIntoDays(ubR1, startDate, offset, 4, "Playoff Tag");
             offset = d1.nextOffset;
 
@@ -85,6 +150,7 @@ export function createTournamentsModule(deps) {
 
             return {
                 isDoubleElim: true,
+                isQualifierOnly: false,
                 size: 16,
                 rounds: [
                     { id: "ub-r1", name: "UB Achtelfinale", defaultFormat, days: d1.days },
@@ -102,6 +168,7 @@ export function createTournamentsModule(deps) {
             };
         }
 
+        // 8er Double Elimination Playoff
         const ubQf = Array.from({ length: 4 }, (_, i) => ({ id: `de8-ub-qf-${i + 1}`, label: `UB Viertelfinale ${i + 1}`, format: defaultFormat }));
         const ubSf = Array.from({ length: 2 }, (_, i) => ({ id: `de8-ub-sf-${i + 1}`, label: `UB Halbfinale ${i + 1}`, format: defaultFormat, fromMatches: [`de8-ub-qf-${i * 2 + 1}`, `de8-ub-qf-${i * 2 + 2}`] }));
         const ubF = [{ id: "de8-ub-f-1", label: "UB Finale", format: defaultFormat, fromMatches: ["de8-ub-sf-1", "de8-ub-sf-2"] }];
@@ -112,6 +179,7 @@ export function createTournamentsModule(deps) {
 
         return {
             isDoubleElim: true,
+            isQualifierOnly: false,
             size: 8,
             rounds: [
                 { id: "ub-qf", name: "UB Viertelfinale", defaultFormat, days: chunkIntoDays(ubQf, startDate, offset, 4).days },
@@ -336,6 +404,7 @@ export function createTournamentsModule(deps) {
 
         const hasPlayoffs = Boolean(cfg.hasPlayoffs);
         const playoffType = cfg.playoffType || "single_elim";
+        const isDoubleElimQuali = playoffType === "double_elim_quali";
         const playoffSize = Number(cfg.playoffSize) || 8;
         const directInvites = Math.max(0, Number(cfg.directInvites) || 0);
         const isQuali32 = Boolean(cfg.isQuali32 || cfg.bracketType === "quali32");
@@ -347,6 +416,7 @@ export function createTournamentsModule(deps) {
         let playInStage = null;
         let playoffRounds = [];
         let isDoubleElimPlayoffs = false;
+        let deQualiMeta = null;
 
         // 1. STUFE: Gruppenphase / Swiss
         if (hasStage1) {
@@ -379,10 +449,18 @@ export function createTournamentsModule(deps) {
 
         // 3. STUFE: Playoffs
         if (hasPlayoffs) {
-            if (playoffType === "double_elim") {
+            if (isDoubleElimQuali || playoffType === "double_elim") {
                 isDoubleElimPlayoffs = true;
-                const de = buildDoubleElimPlayoffs(playoffSize >= 16 ? 16 : 8, startDate, currentDayOffset, defaultFormat, finalFormat);
+                const de = buildDoubleElimPlayoffs(
+                    playoffSize >= 16 ? 16 : 8,
+                    startDate,
+                    currentDayOffset,
+                    defaultFormat,
+                    finalFormat,
+                    isDoubleElimQuali
+                );
                 playoffRounds = de.rounds;
+                if (de.isQualifierOnly) deQualiMeta = de;
             } else {
                 playoffRounds = buildSingleElimPlayoffs(playoffSize, {
                     startDate,
@@ -457,7 +535,11 @@ export function createTournamentsModule(deps) {
         }
         if (hasPlayIn) stageParts.push(`Play-In (${playInMatches} Matches)`);
         if (hasPlayoffs) {
-            stageParts.push(`${isDoubleElimPlayoffs ? "Double-Elim" : "Single-Elim"} ${playoffSize}er Playoffs${directInvites > 0 ? ` (${directInvites} Direkt-Einladungen)` : ""}`);
+            if (isDoubleElimQuali) {
+                stageParts.push(`Double-Elim Play-In / Quali (16 Teams → 8 weiter, 20 Matches)`);
+            } else {
+                stageParts.push(`${isDoubleElimPlayoffs ? "Double-Elim" : "Single-Elim"} ${playoffSize}er Playoffs${directInvites > 0 ? ` (${directInvites} Direkt-Einladungen)` : ""}`);
+            }
         }
 
         const matchFormatSummary = defaultFormat === finalFormat ? `Best of ${defaultFormat.slice(2)} (${defaultFormat})` : `${defaultFormat} (Finale: ${finalFormat})`;
@@ -477,6 +559,8 @@ export function createTournamentsModule(deps) {
             playInMatches,
             hasPlayoffs,
             playoffType,
+            isDoubleElimQuali,
+            deQualiMeta,
             playoffSize,
             directInvites,
             isQuali32,
@@ -504,6 +588,7 @@ export function createTournamentsModule(deps) {
             rounds: playoffRounds,
             participants: cfg.existingParticipants || [],
             matches: cfg.existingMatches || {},
+            matchTimes: cfg.existingMatchTimes || {},
             winners: cfg.existingWinners || {},
             sortOrder: cfg.sortOrder ?? Date.now(),
             createdAt: cfg.createdAt ?? Date.now()
@@ -593,13 +678,14 @@ export function createTournamentsModule(deps) {
     // ==================== TURNIER-GRAPH AUFLÖSEN ====================
     function resolveTournamentGraph(tournament, visited = new Set()) {
         if (!tournament || visited.has(tournament.id)) {
-            return { participants: [], autoSlots: [], matchSlots: {}, matchWinners: {}, swissStandings: {}, rrStandings: {}, stageAdvancers: [] };
+            return { participants: [], autoSlots: [], matchSlots: {}, matchWinners: {}, matchTimes: {}, swissStandings: {}, rrStandings: {}, stageAdvancers: [] };
         }
         visited.add(tournament.id);
 
         const manual = Array.isArray(tournament.participants) ? tournament.participants : [];
         const matchesMap = tournament.matches || {};
         const winnersMap = tournament.winners || {};
+        const matchTimes = tournament.matchTimes || {};
 
         let predGraph = null;
         if (tournament.qualifiedFrom?.tournamentId) {
@@ -728,7 +814,19 @@ export function createTournamentsModule(deps) {
         // 5. Playoffs
         (tournament.rounds || []).forEach(r => r.days.forEach(d => d.matches.forEach(m => resolveMatch(m))));
 
-        return { participants, autoSlots, matchSlots, matchWinners, swissStandings, rrStandings, stageAdvancers };
+        // 6. Double Elim Qualifier / Play-In Qualifikanten einsammeln (4 Upper + 4 Lower = 8 Weiter)
+        if (tournament.isDoubleElimQuali && tournament.deQualiMeta?.qualifierMatchIds) {
+            tournament.deQualiMeta.qualifierMatchIds.forEach(qId => {
+                if (matchWinners[qId]) stageAdvancers.push(matchWinners[qId]);
+            });
+        } else if (tournament.isQuali32) {
+            // 32er Quali-Baum R16-Gewinner
+            (tournament.rounds?.[1]?.days || []).flatMap(d => d.matches).forEach(m => {
+                if (matchWinners[m.id]) stageAdvancers.push(matchWinners[m.id]);
+            });
+        }
+
+        return { participants, autoSlots, matchSlots, matchWinners, matchTimes, swissStandings, rrStandings, stageAdvancers };
     }
     // ==================== RENDERING & BROWSER-ANSICHT ====================
     function getVrsEntriesForDate(date) {
@@ -800,6 +898,17 @@ export function createTournamentsModule(deps) {
         const winUid = graph.matchWinners[match.id] || null;
         const fmt = String(matchFormat || match.format || "BO3").toUpperCase();
         const fmtCls = fmt === "BO5" ? "bo5" : "bo3";
+        const matchTime = graph.matchTimes?.[match.id] || match.time || "";
+
+        const timeMarkup = admin
+            ? `<label class="match-time-label" title="Spielzeit eintragen / ändern">
+                   <span class="time-icon">⏰</span>
+                   <input type="time" class="match-time-input" data-action="set-match-time" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" value="${esc(matchTime)}">
+               </label>`
+            : (matchTime
+                ? `<span class="match-time-pill">⏰ ${esc(matchTime)} Uhr</span>`
+                : `<span class="match-time-pill empty">⏰ TBD</span>`);
+
         return `
             <div class="match-card">
                 <div class="match-card-header">
@@ -807,7 +916,10 @@ export function createTournamentsModule(deps) {
                         <strong>${esc(match.label)}</strong>
                         <span class="match-format-pill ${fmtCls}">${esc(fmt)}</span>
                     </div>
-                    <span class="match-date-pill">${esc(dayLabel ? `${dayLabel} · ` : "")}${esc(dateLabel || "")}</span>
+                    <div class="match-schedule-info">
+                        <span class="match-date-pill">${esc(dayLabel ? `${dayLabel} · ` : "")}${esc(dateLabel || "")}</span>
+                        ${timeMarkup}
+                    </div>
                 </div>
                 ${buildMatchSlotMarkup(tId, match, 0, slots[0], winUid, graph.participants, admin, preferred)}
                 ${buildMatchSlotMarkup(tId, match, 1, slots[1], winUid, graph.participants, admin, preferred)}
@@ -852,7 +964,7 @@ export function createTournamentsModule(deps) {
         }).join("");
 
         return `
-            ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: Teams wählen und per 🏆 Sieger weiterleiten.</span><div class="news-form-actions" style="margin-top:0;"><button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Zugewiesene Teams in R32 setzen</button><button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Matches &amp; Sieger leeren</button></div></div>` : ""}
+            ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: Teams wählen und per 🏆 Sieger weiterleiten.</span><div class="news-form-actions" style="margin-top:0;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Standard-Zeiten verteilen</button><button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 R32 setzen</button><button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Leeren</button></div></div>` : ""}
             <div class="bracket-scroll"><div class="bracket-board">
                 <div class="bracket-col-headers">
                     <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="r32">⚔️ Round of 32 (16 · ${esc(r32.defaultFormat || "BO3")})<small>${esc(t.onlineDates)} · Tage 1–4</small></div>
@@ -900,14 +1012,17 @@ export function createTournamentsModule(deps) {
         const prize1 = t.prizeDistribution?.[0]?.amount;
         const prizeLbl = prize1 ? `${prize1.toLocaleString("de-DE")} $ Preisgeld` : (t.prizePoolTotal ? `${t.prizePoolTotal.toLocaleString("de-DE")} $ Preispool` : "Turniersieger");
 
-        const advAction = (t.hasStage1 || t.hasPlayIn)
+        const advAction = (t.hasStage1 || t.hasPlayIn || t.isDoubleElimQuali)
             ? `<button type="button" class="btn btn-secondary btn-small" data-action="fill-playoffs-from-groups" data-tournament-id="${esc(t.id)}">⚡ Qualifizierte Teams in Playoffs setzen</button>`
             : (t.qualifiedFrom
-                ? `<button type="button" class="btn btn-secondary btn-small" data-action="sync-predecessor-qf" data-tournament-id="${esc(t.id)}">🔄 Qualifizierte Teams neu ins Bracket übernehmen</button>`
+                ? `<button type="button" class="btn btn-secondary btn-small" data-action="sync-predecessor-qf" data-tournament-id="${esc(t.id)}">🔄 Qualifizierte Teams übernehmen</button>`
                 : `<button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teilnehmer in Runde 1 setzen</button>`);
 
+        const qualiInfoBox = t.isDoubleElimQuali ? `<div class="tournament-notice info" style="margin-bottom:14px;"><strong>ℹ️ Play-In / Quali-Modus (20 Matches)</strong><span>Nach Runde 2 im Upper & Lower Bracket stehen die 8 Weiterkommenden (4 Upper + 4 Lower) fest. Über den Button „Qualifizierte Teams in nächste Stufe setzen“ kannst du sie an ein Folge-Turnier übergeben.</span></div>` : "";
+
         return `
-            ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: Sieger per 🏆 festlegen.</span><div class="news-form-actions" style="margin-top:0;">${advAction}<button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Matches zurücksetzen</button></div></div>` : ""}
+            ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: Sieger per 🏆 festlegen.</span><div class="news-form-actions" style="margin-top:0;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Standard-Zeiten verteilen</button>${advAction}<button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Zurücksetzen</button></div></div>` : ""}
+            ${qualiInfoBox}
             <div class="bracket-scroll"><div class="classic-bracket ${rounds.length >= 4 ? "is-16" : ""}">
                 <div class="classic-col-headers ${rounds.length >= 4 ? "is-16" : ""}">${headers}<div class="bracket-col-head">🥇 Sieger<small>${esc(t.prizePoolTotal ? `${t.prizePoolTotal.toLocaleString("de-DE")} $ Pool` : t.onlineDates)}</small></div></div>
                 <div class="classic-bracket-body ${rounds.length >= 4 ? "is-16" : ""}">${cols}<div class="classic-col-champ"><div class="champion-box"><small>🏆 ${champ ? "Champion · 1. Platz" : "Turniersieger"}</small><strong>${champ ? `${champ.icon} ${esc(champ.displayName)}` : "TBD"}</strong><span>${esc(prizeLbl)}</span></div></div></div>
@@ -936,7 +1051,10 @@ export function createTournamentsModule(deps) {
 
             return `
                 <div class="stage-group-block">
-                    <div class="bracket-toolbar"><h3>🇨🇭 ${esc(g.name)} (${g.teamCount} Teams · ${g.winsToAdvance} Siege = Weiter, ${g.lossesToEliminate} Niederlagen = Raus)</h3></div>
+                    <div class="bracket-toolbar">
+                        <h3>🇨🇭 ${esc(g.name)} (${g.teamCount} Teams · ${g.winsToAdvance} Siege = Weiter, ${g.lossesToEliminate} Niederlagen = Raus)</h3>
+                        ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten verteilen</button>` : ""}
+                    </div>
                     <div class="ranking-table-wrap" style="margin-bottom:14px;">
                         <table class="ranking-table stage-table">
                             <thead><tr><th>#</th><th>Team</th><th>Bilanz (S-N)</th><th>Status</th></tr></thead>
@@ -967,7 +1085,7 @@ export function createTournamentsModule(deps) {
                 <div class="stage-group-block">
                     <div class="bracket-toolbar">
                         <h3>⚔️ ${esc(g.name)} (GSL / Double-Elim · ${g.size} Teams)</h3>
-                        ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="autofill-de-group" data-tournament-id="${esc(t.id)}" data-group-index="${gIdx}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teams setzen</button>` : ""}
+                        ${admin ? `<div style="display:flex; gap:6px;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten</button><button type="button" class="btn btn-secondary btn-small" data-action="autofill-de-group" data-tournament-id="${esc(t.id)}" data-group-index="${gIdx}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teams setzen</button></div>` : ""}
                     </div>
                     <div class="round-days-grid">${roundsHtml}</div>
                 </div>
@@ -992,7 +1110,10 @@ export function createTournamentsModule(deps) {
 
             return `
                 <div class="stage-group-block">
-                    <h3>📊 ${esc(g.name)} (Top ${g.advanceCount} weiter)</h3>
+                    <div class="bracket-toolbar">
+                        <h3>📊 ${esc(g.name)} (Top ${g.advanceCount} weiter)</h3>
+                        ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten</button>` : ""}
+                    </div>
                     <div class="ranking-table-wrap" style="margin:10px 0 14px;">
                         <table class="ranking-table stage-table">
                             <thead><tr><th>#</th><th>Team</th><th>Sp.</th><th>S</th><th>N</th><th>Pkt</th><th>Status</th></tr></thead>
@@ -1024,9 +1145,9 @@ export function createTournamentsModule(deps) {
                 <div class="bracket-toolbar">
                     <div>
                         <h3>⚡ Play-In Phase (${stage.matchCount} Entscheidungs-Matches)</h3>
-                        <p class="muted">Die ${stage.advanceCount} Gewinner qualifizieren sich direkt für die nächste Stufe bzw. das nächste Event.</p>
+                        <p class="muted">Die ${stage.advanceCount} Gewinner qualifizieren sich direkt für die nächste Stufe.</p>
                     </div>
-                    ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="fill-playin-from-stage1" data-tournament-id="${esc(t.id)}">⚡ Teams aus Stufe 1 ins Play-In setzen</button>` : ""}
+                    ${admin ? `<div style="display:flex; gap:6px;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten</button><button type="button" class="btn btn-secondary btn-small" data-action="fill-playin-from-stage1" data-tournament-id="${esc(t.id)}">⚡ Teams übernehmen</button></div>` : ""}
                 </div>
                 ${matchesHtml}
             </div>
@@ -1142,7 +1263,7 @@ export function createTournamentsModule(deps) {
             subTabs.push({ id: "playin", label: "⚡ Play-In Phase" });
         }
         if (t.hasPlayoffs) {
-            subTabs.push({ id: "bracket", label: "🌳 Playoffs-Turnierbaum" });
+            subTabs.push({ id: "bracket", label: t.isDoubleElimQuali ? "🏆 Play-In Quali-Bracket" : "🌳 Playoffs-Turnierbaum" });
             (t.rounds || []).forEach(r => {
                 subTabs.push({ id: r.id, label: `${r.name} (${r.defaultFormat || "BO3"})` });
             });
@@ -1310,7 +1431,7 @@ export function createTournamentsModule(deps) {
         if (nextEl) nextEl.innerHTML = opts;
     }
 
-        const setVal = (id, val) => {
+    const setVal = (id, val) => {
         const el = document.getElementById(id);
         if (el) el.value = val !== undefined && val !== null ? String(val) : "";
     };
@@ -1451,6 +1572,7 @@ export function createTournamentsModule(deps) {
                 isQuali32: document.getElementById("te-playoff-size").value === "32",
                 existingParticipants: prev?.participants || [],
                 existingMatches: prev?.matches || {},
+                existingMatchTimes: prev?.matchTimes || {},
                 existingWinners: prev?.winners || {},
                 sortOrder: prev?.sortOrder ?? Date.now(),
                 createdAt: prev?.createdAt ?? Date.now()
@@ -1544,6 +1666,7 @@ export function createTournamentsModule(deps) {
             const clone = structuredClone(t);
             clone.participants = Array.isArray(clone.participants) ? clone.participants : [];
             clone.matches = clone.matches || {};
+            clone.matchTimes = clone.matchTimes || {};
             clone.winners = clone.winners || {};
 
             if (action === "toggle-winner") {
@@ -1591,6 +1714,19 @@ export function createTournamentsModule(deps) {
                 clone.participants = [];
                 clone.matches = {};
                 clone.winners = {};
+            } else if (action === "auto-schedule-times") {
+                const defaultSlots = ["12:00", "15:30", "18:30", "21:30", "10:00", "13:30", "17:00", "20:30"];
+                clone.matchTimes = clone.matchTimes || {};
+                const assignTimes = (matchList) => {
+                    matchList.forEach((m, idx) => { clone.matchTimes[m.id] = defaultSlots[idx % defaultSlots.length]; });
+                };
+                (clone.rounds || []).forEach(r => (r.days || []).forEach(d => assignTimes(d.matches)));
+                (clone.swissGroups || []).forEach(g => (g.rounds || []).forEach(r => assignTimes(r.matches)));
+                (clone.deGroups || []).forEach(g => assignTimes(g.matches));
+                (clone.rrGroups || []).forEach(g => (g.rounds || []).forEach(r => assignTimes(r.matches)));
+                if (clone.playInStage) {
+                    (clone.playInStage.rounds || []).forEach(r => (r.days || []).forEach(d => assignTimes(d.matches)));
+                }
             } else if (action === "autofill-first-round") {
                 const list = resolveTournamentGraph(t).participants;
                 const firstRound = t.rounds?.[0];
@@ -1652,6 +1788,16 @@ export function createTournamentsModule(deps) {
                     firstRound.days.flatMap(d => d.matches).forEach((m, i) => {
                         clone.matches[m.id] = [directTeams[i]?.uid || null, adv[7 - i] || adv[i] || null];
                     });
+                } else if (t.isDoubleElimQuali) {
+                    // Double Elim Quali (8 Teams aus Upper R2 und Lower R2)
+                    const ubAdv = ["de-ub-r2-1", "de-ub-r2-2", "de-ub-r2-3", "de-ub-r2-4"].map(id => graph.matchWinners[id]).filter(Boolean);
+                    const lbAdv = ["de-lb-r2-1", "de-lb-r2-2", "de-lb-r2-3", "de-lb-r2-4"].map(id => graph.matchWinners[id]).filter(Boolean);
+                    const allQualis = [...ubAdv, ...lbAdv];
+                    let idx = 0;
+                    firstRound.days.forEach(d => d.matches.forEach(m => {
+                        clone.matches[m.id] = [allQualis[idx] || null, allQualis[idx + 1] || null];
+                        idx += 2;
+                    }));
                 } else if (t.playoffSize === 6) {
                     clone.matches[firstRound.days[0].matches[0].id] = [adv[2] || null, adv[5] || null];
                     clone.matches[firstRound.days[0].matches[1].id] = [adv[3] || null, adv[4] || null];
@@ -1724,6 +1870,24 @@ export function createTournamentsModule(deps) {
                 clone.matches[mId][slot] = val;
                 if (prevUid && clone.winners[mId] === prevUid && val !== prevUid) delete clone.winners[mId];
                 await saveTournamentDoc(clone);
+                return;
+            }
+
+            if (e.target.dataset.action === "set-match-time") {
+                const tId = e.target.dataset.tournamentId;
+                const mId = e.target.dataset.matchId;
+                const val = e.target.value || "";
+                const t = getTournamentById(tId);
+                if (!t) return;
+                const clone = structuredClone(t);
+                clone.matchTimes = clone.matchTimes || {};
+                if (val) {
+                    clone.matchTimes[mId] = val;
+                } else {
+                    delete clone.matchTimes[mId];
+                }
+                await saveTournamentDoc(clone);
+                return;
             }
         });
 
