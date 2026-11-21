@@ -89,7 +89,7 @@
 
     <div id="password-modal" class="modal-overlay hidden"><div class="modal-box"><div class="modal-header"><h2>Passwort ändern</h2><button id="close-password-modal" class="modal-close" aria-label="Schließen">&times;</button></div><form id="change-password-form"><p id="password-security-warning" class="password-security-warning">Sicherheitshinweis: Nutze hier niemals ein Passwort, das du auch für andere Dienste verwendest.</p><div class="input-group"><label for="old-password">Aktuelles Passwort</label><input type="password" id="old-password" placeholder="Aktuelles Passwort eingeben..." required></div><div class="input-group"><label for="new-password">Neues Passwort (mind. 6 Zeichen)</label><input type="password" id="new-password" placeholder="Mindestens 6 Zeichen..." required minlength="6"></div><div class="input-group"><label for="confirm-password">Neues Passwort bestätigen</label><input type="password" id="confirm-password" placeholder="Neues Passwort wiederholen..." required minlength="6"></div><div id="password-feedback" class="feedback-msg hidden" style="margin-bottom:14px"></div><div class="modal-actions"><button type="button" id="cancel-password-modal" class="btn btn-secondary">Abbrechen</button><button type="submit" class="btn btn-primary">Passwort speichern</button></div></form></div></div>
 
-    <!-- Admin Turnier-Editor Modal (für 100+ Turniere) -->
+    <!-- Admin Turnier-Editor Modal (alle CS2-Formate) -->
     <div id="tournament-editor-modal" class="modal-overlay hidden">
         <div class="modal-box modal-box-wide">
             <div class="modal-header">
@@ -101,17 +101,45 @@
                 <div class="te-grid">
                     <div class="input-group"><label for="te-name">Turniername *</label><input type="text" id="te-name" placeholder="z. B. IEM Katowice 2025" required></div>
                     <div class="input-group"><label for="te-status">Kategorie / Status</label><select id="te-status"><option value="zukuenftig">🗓️ Zukünftig</option><option value="laufend">🔴 Aktuell laufend</option><option value="vergangen">🏁 Vergangen</option></select></div>
-                    <div class="input-group"><label for="te-bracket-type">Turnierbaum-Vorlage</label><select id="te-bracket-type"><option value="classic8">8er K.-o.-Baum (VF → HF → Finale)</option><option value="classic16">16er K.-o.-Baum (AF → VF → HF → Finale)</option><option value="quali32">32er Quali-Baum (R32 → R16 → Top 8)</option></select></div>
+                    <div class="input-group">
+                        <label for="te-bracket-type">Turnierformat-Vorlage</label>
+                        <select id="te-bracket-type">
+                            <option value="classic8">8er K.-o.-Playoffs (VF → HF → Finale)</option>
+                            <option value="classic6">6er K.-o.-Playoffs (IEM-Style: Top 2 Bye → HF → Finale)</option>
+                            <option value="classic16">16er K.-o.-Baum (AF → VF → HF → Finale)</option>
+                            <option value="quali32">32er Quali-Baum (R32 → R16 → Top 8 weiter)</option>
+                            <option value="double8">8er Double-Elimination (Upper &amp; Lower Bracket)</option>
+                            <option value="double16">16er Double-Elimination (2×8 Gruppen + Playoffs)</option>
+                            <option value="swiss16">Große Swiss Stage (16 Teams → Top 8 weiter)</option>
+                            <option value="swiss16_playoffs">16er Swiss Stage + Playoffs (Major / PGL)</option>
+                            <option value="multi_swiss">Mehrere Gruppen mit Swiss Stage (2–4 Gruppen)</option>
+                            <option value="groups_rr_playoffs">Normale Gruppenphase (Jeder gegen Jeden) + Playoffs</option>
+                            <option value="groups_gsl_playoffs">GSL- / Double-Elim-Gruppen + Playoffs</option>
+                        </select>
+                    </div>
                     <div class="input-group"><label for="te-start-date">Startdatum (für Spieltage)</label><input type="date" id="te-start-date" required></div>
                     <div class="input-group"><label for="te-matches-per-day">Matches pro Tag (R32/AF/VF)</label><select id="te-matches-per-day"><option value="2">2 Matches pro Tag</option><option value="4" selected>4 Matches pro Tag</option><option value="8">8 Matches pro Tag</option></select></div>
                     <div class="input-group"><label for="te-online-dates">Zeitraum-Anzeige *</label><input type="text" id="te-online-dates" placeholder="z. B. 14.–19. Januar 2025" required></div>
                     <div class="input-group"><label for="te-online-region">Austragungsort / Region *</label><input type="text" id="te-online-region" placeholder="z. B. Europa (Online) oder Katowice, Polen" required></div>
                     <div class="input-group"><label for="te-default-format">Standard Match-Format</label><select id="te-default-format"><option value="BO1">Best of 1 (BO1)</option><option value="BO3" selected>Best of 3 (BO3)</option><option value="BO5">Best of 5 (BO5)</option></select></div>
+                    <div class="input-group"><label for="te-decider-format">Swiss Decider / Entscheidungs-Format</label><select id="te-decider-format"><option value="BO1">Best of 1 (BO1)</option><option value="BO3" selected>Best of 3 (BO3)</option><option value="BO5">Best of 5 (BO5)</option></select></div>
                     <div class="input-group"><label for="te-final-format">Finale Match-Format</label><select id="te-final-format"><option value="BO3">Best of 3 (BO3)</option><option value="BO5" selected>Best of 5 (BO5)</option><option value="BO1">Best of 1 (BO1)</option></select></div>
-                    <div class="input-group"><label for="te-invite-summary">Einladungsmodus / Teams</label><input type="text" id="te-invite-summary" placeholder="z. B. Top 32 VRS (keine Regionsspezifikation)"></div>
+                    <div class="input-group"><label for="te-invite-summary">Einladungsmodus / Teams</label><input type="text" id="te-invite-summary" placeholder="z. B. Top 16 VRS"></div>
+                </div>
+
+                <div id="te-group-options" class="te-group-box hidden">
+                    <div class="te-grid te-grid-4">
+                        <div class="input-group"><label for="te-group-count">Anzahl Gruppen</label><select id="te-group-count"><option value="1">1 Gruppe</option><option value="2" selected>2 Gruppen</option><option value="3">3 Gruppen</option><option value="4">4 Gruppen</option></select></div>
+                        <div class="input-group"><label for="te-group-size">Teams pro Gruppe</label><select id="te-group-size"><option value="4">4 Teams</option><option value="5">5 Teams</option><option value="6">6 Teams</option><option value="8" selected>8 Teams</option><option value="16">16 Teams</option></select></div>
+                        <div class="input-group"><label for="te-advance-per-group">Weiter pro Gruppe</label><select id="te-advance-per-group"><option value="1">Top 1</option><option value="2" selected>Top 2</option><option value="3">Top 3</option><option value="4">Top 4</option><option value="8">Top 8</option></select></div>
+                        <div class="input-group"><label for="te-playoff-size">Angeschlossene Playoffs</label><select id="te-playoff-size"><option value="0">Keine (oder Folge-Turnier)</option><option value="4">4er Playoffs (HF → F)</option><option value="6">6er Playoffs (Top 2 Bye)</option><option value="8" selected>8er Playoffs (VF → HF → F)</option></select></div>
+                    </div>
+                </div>
+
+                <div class="te-grid">
                     <div class="input-group"><label for="te-lan-dates">LAN Finals Zeitraum (optional)</label><input type="text" id="te-lan-dates" placeholder="z. B. 23.–26. Januar 2025"></div>
                     <div class="input-group"><label for="te-lan-location">LAN Finals Ort (optional)</label><input type="text" id="te-lan-location" placeholder="z. B. Kopenhagen, Dänemark"></div>
-                    <div class="input-group"><label for="te-travel-window">Reisezeitraum bei Weiterkommen (optional)</label><input type="text" id="te-travel-window" placeholder="z. B. 20.–22. Januar 2025"></div>
+                    <div class="input-group"><label for="te-travel-window">Reisezeitraum (optional)</label><input type="text" id="te-travel-window" placeholder="z. B. 20.–22. Januar 2025"></div>
                     <div class="input-group"><label for="te-predecessor-id">Quali-Sieger automatisch von (optional)</label><select id="te-predecessor-id"><option value="">– Keine Verknüpfung –</option></select></div>
                     <div class="input-group"><label for="te-next-id">Folge-Turnier verlinken (optional)</label><select id="te-next-id"><option value="">– Kein Folge-Turnier –</option></select></div>
                     <div class="input-group"><label for="te-prize-total">Gesamtpreispool in $ (optional)</label><input type="number" id="te-prize-total" min="0" step="1000" placeholder="z. B. 500000"></div>
@@ -122,7 +150,7 @@
                     <div class="input-group"><label for="te-prize-34">3.–4. Platz je ($)</label><input type="number" id="te-prize-34" min="0" placeholder="50000"></div>
                     <div class="input-group"><label for="te-prize-58">5.–8. Platz je ($)</label><input type="number" id="te-prize-58" min="0" placeholder="25000"></div>
                 </div>
-                <div class="input-group"><label for="te-location-notice">Hinweis 1 (z. B. Standort-Pflicht / Turnier-Info, optional)</label><textarea id="te-location-notice" rows="2" placeholder="z. B. Dein Team muss sich in Europa befinden..."></textarea></div>
+                <div class="input-group"><label for="te-location-notice">Hinweis 1 (z. B. Standort-Pflicht / Info, optional)</label><textarea id="te-location-notice" rows="2" placeholder="z. B. Dein Team muss sich in Europa befinden..."></textarea></div>
                 <div class="input-group"><label for="te-travel-notice">Hinweis 2 (z. B. Reisehinweis bei Weiterkommen, optional)</label><textarea id="te-travel-notice" rows="2" placeholder="z. B. Bei Weiterkommen Reise vom 20.–22. Januar nach Kopenhagen..."></textarea></div>
                 <div class="modal-actions">
                     <button type="button" id="te-cancel" class="btn btn-secondary">Abbrechen</button>
