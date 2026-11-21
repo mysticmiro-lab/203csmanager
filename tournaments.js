@@ -1310,7 +1310,6 @@ export function createTournamentsModule(deps) {
         if (nextEl) nextEl.innerHTML = opts;
     }
 
-    function updateModularEditorVisibility() {
         const setVal = (id, val) => {
         const el = document.getElementById(id);
         if (el) el.value = val !== undefined && val !== null ? String(val) : "";
