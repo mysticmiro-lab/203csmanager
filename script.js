@@ -16,6 +16,7 @@ const TOURNAMENTS_DATA = [
     {
         id: "blast-bounty-2025-s1",
         name: "Blast Bounty 2025 Season 1",
+        bracketType: "quali32",
         defaultStatus: "zukuenftig", // "laufend" | "zukuenftig" | "vergangen"
         maxTeams: 32,
         onlineDates: "14.–19. Januar 2025",
@@ -23,8 +24,10 @@ const TOURNAMENTS_DATA = [
         lanDates: "23.–26. Januar 2025",
         lanLocation: "Kopenhagen, Dänemark",
         travelWindow: "20.–22. Januar 2025",
-        formatSummary: "Round of 32 → Round of 16 → Top 8 qualifizieren sich für die LAN Finals",
+        matchFormatSummary: "Best of 3 (BO3)",
+        formatSummary: "Round of 32 → Round of 16 → Top 8 qualifizieren sich für die LAN Finals (Alle Matches BO3)",
         inviteSummary: "Top 32 der Weltrangliste (keine Regionsspezifikation)",
+        nextTournamentId: "blast-bounty-2025-s1-finals",
         notices: [
             {
                 type: "info",
@@ -36,7 +39,9 @@ const TOURNAMENTS_DATA = [
                 type: "warning",
                 icon: "✈️",
                 title: "Reisehinweis bei Weiterkommen (Top 8)",
-                text: "Falls sich dein Team für die Top 8 qualifiziert, musst du vom 20.–22. Januar 2025 nach Kopenhagen (Dänemark) reisen, um dort vom 23.–26. Januar 2025 bei den LAN Finals weiterzuspielen."
+                text: "Falls sich dein Team für die Top 8 qualifiziert, musst du vom 20.–22. Januar 2025 nach Kopenhagen (Dänemark) reisen, um dort vom 23.–26. Januar 2025 bei den LAN Finals weiterzuspielen.",
+                linkTournamentId: "blast-bounty-2025-s1-finals",
+                linkLabel: "→ Zu den Blast Bounty 2025 Season 1 Finals (23.–26. Januar 2025)"
             },
             {
                 type: "neutral",
@@ -50,7 +55,8 @@ const TOURNAMENTS_DATA = [
                 id: "r32",
                 name: "Round of 32",
                 shortName: "R32",
-                subtitle: "16 Matches · Jeweils 4 Matches pro Tag (14.–17. Januar 2025)",
+                defaultFormat: "BO3",
+                subtitle: "16 Matches · Best of 3 (BO3) · Jeweils 4 Matches pro Tag (14.–17. Januar 2025)",
                 days: [
                     {
                         dayLabel: "Tag 1",
@@ -98,26 +104,132 @@ const TOURNAMENTS_DATA = [
                 id: "r16",
                 name: "Round of 16",
                 shortName: "R16",
-                subtitle: "8 Matches · Jeweils 4 Matches pro Tag (18.–19. Januar 2025) → Sieger erreichen die Top 8 LAN Finals",
+                defaultFormat: "BO3",
+                subtitle: "8 Matches · Best of 3 (BO3) · Jeweils 4 Matches pro Tag (18.–19. Januar 2025) → Sieger erreichen die Top 8 LAN Finals",
                 days: [
                     {
                         dayLabel: "Tag 5",
                         dateLabel: "18. Januar 2025",
                         matches: [
-                            { id: "r16-1", label: "R16 Match 1", fromR32: ["r32-1", "r32-2"] },
-                            { id: "r16-2", label: "R16 Match 2", fromR32: ["r32-3", "r32-4"] },
-                            { id: "r16-3", label: "R16 Match 3", fromR32: ["r32-5", "r32-6"] },
-                            { id: "r16-4", label: "R16 Match 4", fromR32: ["r32-7", "r32-8"] }
+                            { id: "r16-1", label: "R16 Match 1", fromMatches: ["r32-1", "r32-2"], slotHints: ["Sieger R32 #1", "Sieger R32 #2"] },
+                            { id: "r16-2", label: "R16 Match 2", fromMatches: ["r32-3", "r32-4"], slotHints: ["Sieger R32 #3", "Sieger R32 #4"] },
+                            { id: "r16-3", label: "R16 Match 3", fromMatches: ["r32-5", "r32-6"], slotHints: ["Sieger R32 #5", "Sieger R32 #6"] },
+                            { id: "r16-4", label: "R16 Match 4", fromMatches: ["r32-7", "r32-8"], slotHints: ["Sieger R32 #7", "Sieger R32 #8"] }
                         ]
                     },
                     {
                         dayLabel: "Tag 6",
                         dateLabel: "19. Januar 2025",
                         matches: [
-                            { id: "r16-5", label: "R16 Match 5", fromR32: ["r32-9", "r32-10"] },
-                            { id: "r16-6", label: "R16 Match 6", fromR32: ["r32-11", "r32-12"] },
-                            { id: "r16-7", label: "R16 Match 7", fromR32: ["r32-13", "r32-14"] },
-                            { id: "r16-8", label: "R16 Match 8", fromR32: ["r32-15", "r32-16"] }
+                            { id: "r16-5", label: "R16 Match 5", fromMatches: ["r32-9", "r32-10"], slotHints: ["Sieger R32 #9", "Sieger R32 #10"] },
+                            { id: "r16-6", label: "R16 Match 6", fromMatches: ["r32-11", "r32-12"], slotHints: ["Sieger R32 #11", "Sieger R32 #12"] },
+                            { id: "r16-7", label: "R16 Match 7", fromMatches: ["r32-13", "r32-14"], slotHints: ["Sieger R32 #13", "Sieger R32 #14"] },
+                            { id: "r16-8", label: "R16 Match 8", fromMatches: ["r32-15", "r32-16"], slotHints: ["Sieger R32 #15", "Sieger R32 #16"] }
+                        ]
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        id: "blast-bounty-2025-s1-finals",
+        name: "Blast Bounty 2025 Season 1 Finals",
+        bracketType: "classic8",
+        defaultStatus: "zukuenftig",
+        maxTeams: 8,
+        onlineDates: "23.–26. Januar 2025 (LAN)",
+        onlineRegion: "Kopenhagen, Dänemark",
+        lanDates: "23.–26. Januar 2025",
+        lanLocation: "Kopenhagen, Dänemark",
+        travelWindow: "20.–22. Januar 2025 (Anreise)",
+        matchFormatSummary: "BO3 (Finale: BO5)",
+        formatSummary: "Klassischer K.-o.-Turnierbaum: Viertelfinale (BO3) → Halbfinale (BO3) → Finale (BO5)",
+        inviteSummary: "8 Gewinner-Teams aus Blast Bounty 2025 Season 1 (automatisch)",
+        prizePoolTotal: 500000,
+        prizeDistribution: [
+            { place: "🥇 1. Platz", amount: 200000, perTeam: true, sourceType: "final-winner" },
+            { place: "🥈 2. Platz", amount: 100000, perTeam: true, sourceType: "final-loser" },
+            { place: "🥉 3.–4. Platz", amount: 50000, perTeam: true, sourceType: "sf-losers", labelSuffix: " (je Team)" },
+            { place: "🏅 5.–8. Platz", amount: 25000, perTeam: true, sourceType: "qf-losers", labelSuffix: " (je Team)" }
+        ],
+        qualifiedFrom: {
+            tournamentId: "blast-bounty-2025-s1",
+            slots: [
+                { matchId: "r16-1", label: "Sieger R16 Match 1" },
+                { matchId: "r16-2", label: "Sieger R16 Match 2" },
+                { matchId: "r16-3", label: "Sieger R16 Match 3" },
+                { matchId: "r16-4", label: "Sieger R16 Match 4" },
+                { matchId: "r16-5", label: "Sieger R16 Match 5" },
+                { matchId: "r16-6", label: "Sieger R16 Match 6" },
+                { matchId: "r16-7", label: "Sieger R16 Match 7" },
+                { matchId: "r16-8", label: "Sieger R16 Match 8" }
+            ]
+        },
+        notices: [
+            {
+                type: "info",
+                icon: "🏆",
+                title: "Automatische Qualifikation aus dem Vorgängerturnier",
+                text: "Die 8 Sieger der Round of 16 aus „Blast Bounty 2025 Season 1“ werden automatisch als Teilnehmer für diese LAN Finals in Kopenhagen übernommen.",
+                linkTournamentId: "blast-bounty-2025-s1",
+                linkLabel: "← Zurück zur Online-Quali: Blast Bounty 2025 Season 1"
+            }
+        ],
+        rounds: [
+            {
+                id: "qf",
+                name: "Viertelfinale",
+                shortName: "Viertelfinale",
+                defaultFormat: "BO3",
+                subtitle: "4 Matches · Best of 3 (BO3) · 23.–24. Januar 2025 · Verlierer erhalten 25.000 $ (Platz 5–8)",
+                days: [
+                    {
+                        dayLabel: "Tag 1",
+                        dateLabel: "23. Januar 2025",
+                        matches: [
+                            { id: "qf-1", label: "Viertelfinale 1", fromPredecessor: ["r16-1", "r16-2"], slotHints: ["Sieger R16 #1", "Sieger R16 #2"] },
+                            { id: "qf-2", label: "Viertelfinale 2", fromPredecessor: ["r16-3", "r16-4"], slotHints: ["Sieger R16 #3", "Sieger R16 #4"] }
+                        ]
+                    },
+                    {
+                        dayLabel: "Tag 2",
+                        dateLabel: "24. Januar 2025",
+                        matches: [
+                            { id: "qf-3", label: "Viertelfinale 3", fromPredecessor: ["r16-5", "r16-6"], slotHints: ["Sieger R16 #5", "Sieger R16 #6"] },
+                            { id: "qf-4", label: "Viertelfinale 4", fromPredecessor: ["r16-7", "r16-8"], slotHints: ["Sieger R16 #7", "Sieger R16 #8"] }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: "sf",
+                name: "Halbfinale",
+                shortName: "Halbfinale",
+                defaultFormat: "BO3",
+                subtitle: "2 Matches · Best of 3 (BO3) · 25. Januar 2025 · Verlierer erhalten 50.000 $ (Platz 3–4)",
+                days: [
+                    {
+                        dayLabel: "Tag 3",
+                        dateLabel: "25. Januar 2025",
+                        matches: [
+                            { id: "sf-1", label: "Halbfinale 1", fromMatches: ["qf-1", "qf-2"], slotHints: ["Sieger VF #1", "Sieger VF #2"] },
+                            { id: "sf-2", label: "Halbfinale 2", fromMatches: ["qf-3", "qf-4"], slotHints: ["Sieger VF #3", "Sieger VF #4"] }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: "final",
+                name: "Finale",
+                shortName: "Finale",
+                defaultFormat: "BO5",
+                subtitle: "1 Match · Best of 5 (BO5) · 26. Januar 2025 · Sieger gewinnt 200.000 $, Platz 2 erhält 100.000 $",
+                days: [
+                    {
+                        dayLabel: "Tag 4",
+                        dateLabel: "26. Januar 2025",
+                        matches: [
+                            { id: "final-1", label: "Grand Final", format: "BO5", fromMatches: ["sf-1", "sf-2"], slotHints: ["Sieger HF #1", "Sieger HF #2"] }
                         ]
                     }
                 ]
@@ -134,7 +246,7 @@ let activeTeamUsername = null;
 // Turnier-UI-Zustand
 let activeTournamentCategory = "laufend";
 let activeTournamentId = null;
-let activeTournamentSubTab = "bracket"; // "bracket" | "r32" | "r16" | "participants"
+let activeTournamentSubTab = "bracket";
 let selectedVrsPickerDate = "";
 let vrsSearchTerm = "";
 
@@ -548,19 +660,136 @@ function setupAppEvents() {
 }
 
 // ==================== TURNIERE & TURNIERBAUM ====================
+function getTournamentById(tournamentId) {
+    return TOURNAMENTS_DATA.find(t => t.id === tournamentId) || null;
+}
+
 function getTournamentStatus(tournament) {
     const state = getTournamentsState();
     return state[tournament.id]?.status || tournament.defaultStatus;
 }
 
-function getTournamentParticipants(tournamentId) {
+function getManualParticipants(tournamentId) {
     const state = getTournamentsState();
     return Array.isArray(state[tournamentId]?.participants) ? state[tournamentId].participants : [];
 }
 
-function getTournamentMatches(tournamentId) {
+function getTournamentMatchesMap(tournamentId) {
     const state = getTournamentsState();
     return state[tournamentId]?.matches || {};
+}
+
+function getTournamentWinnersMap(tournamentId) {
+    const state = getTournamentsState();
+    return state[tournamentId]?.winners || {};
+}
+
+function getAllTournamentMatchDefs(tournament) {
+    const map = {};
+    tournament.rounds.forEach(round => {
+        const roundFormat = round.defaultFormat || "BO3";
+        round.days.forEach(day => {
+            day.matches.forEach(m => {
+                map[m.id] = {
+                    match: m,
+                    dateLabel: day.dateLabel,
+                    dayLabel: day.dayLabel,
+                    roundId: round.id,
+                    matchFormat: m.format || roundFormat
+                };
+            });
+        });
+    });
+    return map;
+}
+
+// Rekursiv-sicher: Ermittelt effektive Slots [uid0, uid1] und Sieger-UID für jedes Match
+function resolveTournamentGraph(tournament, visited = new Set()) {
+    if (!tournament || visited.has(tournament.id)) {
+        return { participants: [], autoSlots: [], matchSlots: {}, matchWinners: {} };
+    }
+    visited.add(tournament.id);
+
+    const manualParticipants = getManualParticipants(tournament.id);
+    const matchesMap = getTournamentMatchesMap(tournament.id);
+    const winnersMap = getTournamentWinnersMap(tournament.id);
+
+    let predGraph = null;
+    if (tournament.qualifiedFrom) {
+        const predTournament = getTournamentById(tournament.qualifiedFrom.tournamentId);
+        if (predTournament) {
+            predGraph = resolveTournamentGraph(predTournament, new Set(visited));
+        }
+    }
+
+    // Automatisch qualifizierte Teams aus Vorgängerturnier einsammeln
+    const autoSlots = [];
+    const effectiveParticipants = [];
+    const seenUids = new Set();
+
+    if (tournament.qualifiedFrom && predGraph) {
+        tournament.qualifiedFrom.slots.forEach(slot => {
+            const winUid = predGraph.matchWinners[slot.matchId] || null;
+            const predParticipant = winUid ? predGraph.participants.find(p => p.uid === winUid) : null;
+            autoSlots.push({
+                matchId: slot.matchId,
+                label: slot.label,
+                participant: predParticipant ? { ...predParticipant, autoQualified: true, qualifiedFromLabel: slot.label } : null
+            });
+            if (predParticipant && !seenUids.has(predParticipant.uid)) {
+                seenUids.add(predParticipant.uid);
+                effectiveParticipants.push({ ...predParticipant, autoQualified: true, qualifiedFromLabel: slot.label });
+            }
+        });
+    }
+
+    manualParticipants.forEach(p => {
+        if (!seenUids.has(p.uid)) {
+            seenUids.add(p.uid);
+            effectiveParticipants.push(p);
+        }
+    });
+
+    const matchSlots = {};
+    const matchWinners = {};
+
+    // Runden in Reihenfolge auflösen (damit Sieger automatisch in die nächste Runde weitergeleitet werden)
+    tournament.rounds.forEach(round => {
+        round.days.forEach(day => {
+            day.matches.forEach(m => {
+                const storedRow = matchesMap[m.id];
+                const resolvedRow = [null, null];
+
+                for (let s = 0; s < 2; s++) {
+                    if (Array.isArray(storedRow) && storedRow[s] !== undefined) {
+                        resolvedRow[s] = storedRow[s];
+                    } else if (Array.isArray(m.fromMatches) && m.fromMatches[s]) {
+                        resolvedRow[s] = matchWinners[m.fromMatches[s]] || null;
+                    } else if (Array.isArray(m.fromPredecessor) && m.fromPredecessor[s] && predGraph) {
+                        resolvedRow[s] = predGraph.matchWinners[m.fromPredecessor[s]] || null;
+                    }
+                }
+
+                // Nur gültige Teilnehmer zulassen
+                for (let s = 0; s < 2; s++) {
+                    if (resolvedRow[s] && !seenUids.has(resolvedRow[s])) {
+                        resolvedRow[s] = null;
+                    }
+                }
+
+                matchSlots[m.id] = resolvedRow;
+
+                const rawWinner = winnersMap[m.id] || null;
+                if (rawWinner && (rawWinner === resolvedRow[0] || rawWinner === resolvedRow[1])) {
+                    matchWinners[m.id] = rawWinner;
+                } else {
+                    matchWinners[m.id] = null;
+                }
+            });
+        });
+    });
+
+    return { participants: effectiveParticipants, autoSlots, matchSlots, matchWinners };
 }
 
 function getVrsRankingsMap() {
@@ -616,21 +845,26 @@ function formatCategoryBadge(status) {
     return { label: "🏁 Vergangen", cls: "t-badge-vergangen" };
 }
 
-function buildMatchSlotMarkup(tournamentId, matchId, slotIndex, assignedUid, participants, isAdmin, preferredUids = []) {
+function buildMatchSlotMarkup(tournamentId, match, slotIndex, assignedUid, winnerUid, participants, isAdmin, preferredUids = []) {
     const resolved = getResolvedParticipant(assignedUid, participants);
+    const isWinner = Boolean(winnerUid && assignedUid && winnerUid === assignedUid);
+    const isLoser = Boolean(winnerUid && assignedUid && winnerUid !== assignedUid);
+
     if (!isAdmin) {
         if (!resolved) {
-            return `<div class="match-team-row tbd"><span>TBD</span><span>–</span></div>`;
+            const hint = match.slotHints?.[slotIndex] ? `TBD (${match.slotHints[slotIndex]})` : "TBD";
+            return `<div class="match-team-row tbd"><span>${escapeHTML(hint)}</span><span>–</span></div>`;
         }
-        return `<div class="match-team-row"><span>${resolved.icon} ${escapeHTML(resolved.displayName)}</span><span class="muted" style="font-size:.72rem;">${resolved.type === "player" ? "Spieler" : "VRS"}</span></div>`;
+        const rowClass = isWinner ? "winner" : (isLoser ? "loser" : "");
+        const tag = isWinner ? "🏆 Sieger" : (resolved.type === "player" ? "Spieler" : "VRS");
+        return `<div class="match-team-row ${rowClass}"><span>${resolved.icon} ${escapeHTML(resolved.displayName)}</span><span style="font-size:.72rem;">${tag}</span></div>`;
     }
 
     const prefSet = new Set(preferredUids.filter(Boolean));
     const sorted = [...participants].sort((a, b) => {
         const aPref = prefSet.has(a.uid) ? 0 : 1;
         const bPref = prefSet.has(b.uid) ? 0 : 1;
-        if (aPref !== bPref) return aPref - bPref;
-        return 0;
+        return aPref - bPref;
     });
 
     const options = sorted.map(p => {
@@ -639,67 +873,86 @@ function buildMatchSlotMarkup(tournamentId, matchId, slotIndex, assignedUid, par
         return `<option value="${escapeHTML(p.uid)}" ${p.uid === assignedUid ? "selected" : ""}>${prefix}${info.icon} ${escapeHTML(info.displayName)}</option>`;
     }).join("");
 
-    return `
-        <select class="match-team-select" data-action="set-match-slot" data-tournament-id="${escapeHTML(tournamentId)}" data-match-id="${escapeHTML(matchId)}" data-slot="${slotIndex}" aria-label="${escapeHTML(matchId)} Team ${slotIndex + 1}">
-            <option value="">-- TBD (Offen) --</option>
-            ${options}
-        </select>
-    `;
-}
+    const tbdLabel = match.slotHints?.[slotIndex] ? `-- TBD (${match.slotHints[slotIndex]}) --` : "-- TBD (Offen) --";
 
-function renderMatchCard(tournamentId, match, dateLabel, dayLabel, participants, matchesMap, isAdmin, preferredUids = []) {
-    const slots = matchesMap[match.id] || [null, null];
     return `
-        <div class="match-card">
-            <div class="match-card-header">
-                <strong>${escapeHTML(match.label)}</strong>
-                <span class="match-date-pill">${escapeHTML(dayLabel)} · ${escapeHTML(dateLabel)}</span>
-            </div>
-            ${buildMatchSlotMarkup(tournamentId, match.id, 0, slots[0], participants, isAdmin, preferredUids)}
-            ${buildMatchSlotMarkup(tournamentId, match.id, 1, slots[1], participants, isAdmin, preferredUids)}
+        <div class="match-admin-slot">
+            <select class="match-team-select ${isWinner ? "is-winner" : ""}" data-action="set-match-slot" data-tournament-id="${escapeHTML(tournamentId)}" data-match-id="${escapeHTML(match.id)}" data-slot="${slotIndex}" aria-label="${escapeHTML(match.label)} Team ${slotIndex + 1}">
+                <option value="">${escapeHTML(tbdLabel)}</option>
+                ${options}
+            </select>
+            <button type="button" class="btn-winner-toggle ${isWinner ? "active" : ""}" data-action="toggle-winner" data-tournament-id="${escapeHTML(tournamentId)}" data-match-id="${escapeHTML(match.id)}" data-uid="${escapeHTML(assignedUid || "")}" ${!assignedUid ? "disabled" : ""} title="${isWinner ? "Sieger-Markierung entfernen" : "Als Sieger festlegen"}">🏆</button>
         </div>
     `;
 }
 
-function renderBracketTab(tournament, participants, matchesMap, isAdmin) {
+function renderMatchCard(tournamentId, match, dateLabel, dayLabel, matchFormat, graph, isAdmin, preferredUids = []) {
+    const slots = graph.matchSlots[match.id] || [null, null];
+    const winnerUid = graph.matchWinners[match.id] || null;
+    const fmt = String(matchFormat || match.format || "BO3").toUpperCase();
+    const fmtClass = fmt === "BO5" ? "bo5" : "bo3";
+
+    return `
+        <div class="match-card">
+            <div class="match-card-header">
+                <div class="match-card-title">
+                    <strong>${escapeHTML(match.label)}</strong>
+                    <span class="match-format-pill ${fmtClass}">${escapeHTML(fmt)}</span>
+                </div>
+                <span class="match-date-pill">${escapeHTML(dayLabel)} · ${escapeHTML(dateLabel)}</span>
+            </div>
+            ${buildMatchSlotMarkup(tournamentId, match, 0, slots[0], winnerUid, graph.participants, isAdmin, preferredUids)}
+            ${buildMatchSlotMarkup(tournamentId, match, 1, slots[1], winnerUid, graph.participants, isAdmin, preferredUids)}
+        </div>
+    `;
+}
+
+function renderQuali32BracketTab(tournament, graph, isAdmin) {
     const r32Round = tournament.rounds.find(r => r.id === "r32");
     const r16Round = tournament.rounds.find(r => r.id === "r16");
 
     const r32Lookup = {};
     r32Round.days.forEach(day => {
         day.matches.forEach(m => {
-            r32Lookup[m.id] = { match: m, dateLabel: day.dateLabel, dayLabel: day.dayLabel };
+            r32Lookup[m.id] = { match: m, dateLabel: day.dateLabel, dayLabel: day.dayLabel, fmt: m.format || r32Round.defaultFormat || "BO3" };
         });
     });
 
     const r16All = [];
     r16Round.days.forEach(day => {
         day.matches.forEach(m => {
-            r16All.push({ match: m, dateLabel: day.dateLabel, dayLabel: day.dayLabel });
+            r16All.push({ match: m, dateLabel: day.dateLabel, dayLabel: day.dayLabel, fmt: m.format || r16Round.defaultFormat || "BO3" });
         });
     });
 
     const pairsHtml = r16All.map((r16Item, index) => {
-        const [leftId, rightId] = r16Item.match.fromR32;
+        const [leftId, rightId] = r16Item.match.fromMatches;
         const leftR32 = r32Lookup[leftId];
         const rightR32 = r32Lookup[rightId];
 
-        const leftSlots = matchesMap[leftId] || [null, null];
-        const rightSlots = matchesMap[rightId] || [null, null];
+        const leftSlots = graph.matchSlots[leftId] || [null, null];
+        const rightSlots = graph.matchSlots[rightId] || [null, null];
         const feedingUids = [...leftSlots, ...rightSlots].filter(Boolean);
+
+        const r16WinUid = graph.matchWinners[r16Item.match.id];
+        const r16WinInfo = r16WinUid ? getResolvedParticipant(r16WinUid, graph.participants) : null;
+
+        const lanPillText = r16WinInfo
+            ? `✅ ${r16WinInfo.icon} ${escapeHTML(r16WinInfo.displayName)}<br><span style="font-weight:400;">Qualifiziert für LAN Finals</span>`
+            : `🏆 Top 8 Platz #${index + 1}<br><span style="font-weight:400; color:#fde68a;">→ LAN Finals Kopenhagen</span>`;
 
         return `
             <div class="bracket-pair">
                 <div class="bracket-pair-r32">
-                    ${renderMatchCard(tournament.id, leftR32.match, leftR32.dateLabel, leftR32.dayLabel, participants, matchesMap, isAdmin)}
-                    ${renderMatchCard(tournament.id, rightR32.match, rightR32.dateLabel, rightR32.dayLabel, participants, matchesMap, isAdmin)}
+                    ${renderMatchCard(tournament.id, leftR32.match, leftR32.dateLabel, leftR32.dayLabel, leftR32.fmt, graph, isAdmin)}
+                    ${renderMatchCard(tournament.id, rightR32.match, rightR32.dateLabel, rightR32.dayLabel, rightR32.fmt, graph, isAdmin)}
                 </div>
                 <div class="bracket-connector" aria-hidden="true"></div>
                 <div class="bracket-pair-r16">
-                    ${renderMatchCard(tournament.id, r16Item.match, r16Item.dateLabel, r16Item.dayLabel, participants, matchesMap, isAdmin, feedingUids)}
+                    ${renderMatchCard(tournament.id, r16Item.match, r16Item.dateLabel, r16Item.dayLabel, r16Item.fmt, graph, isAdmin, feedingUids)}
                 </div>
                 <div class="bracket-lan-cell">
-                    <div class="lan-qual-pill">🏆 Top 8 Platz #${index + 1}<br><span style="font-weight:400; color:#fde68a;">→ LAN Finals Kopenhagen</span></div>
+                    <button type="button" class="lan-qual-pill ${r16WinInfo ? "qualified" : ""}" data-action="open-tournament" data-tournament-id="${escapeHTML(tournament.nextTournamentId)}">${lanPillText}</button>
                 </div>
             </div>
         `;
@@ -707,10 +960,10 @@ function renderBracketTab(tournament, participants, matchesMap, isAdmin) {
 
     const adminControls = isAdmin ? `
         <div class="bracket-toolbar">
-            <span class="muted">Admin-Steuerung: Teams können direkt im Turnierbaum pro Match ausgewählt oder automatisch befüllt werden.</span>
+            <span class="muted">Admin: Wähle Teams und klicke auf 🏆, um den Sieger automatisch weiterzuleiten (R16-Sieger landen direkt in den LAN Finals).</span>
             <div class="news-form-actions" style="margin-top:0;">
-                <button type="button" class="btn btn-secondary btn-small" data-action="autofill-r32" data-tournament-id="${escapeHTML(tournament.id)}" ${participants.length === 0 ? "disabled" : ""}>🎲 Zugewiesene Teams in R32 setzen</button>
-                <button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${escapeHTML(tournament.id)}">🧹 Matches leeren</button>
+                <button type="button" class="btn btn-secondary btn-small" data-action="autofill-r32" data-tournament-id="${escapeHTML(tournament.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Zugewiesene Teams in R32 setzen</button>
+                <button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${escapeHTML(tournament.id)}">🧹 Matches &amp; Sieger leeren</button>
             </div>
         </div>
     ` : "";
@@ -724,15 +977,15 @@ function renderBracketTab(tournament, participants, matchesMap, isAdmin) {
             <div class="bracket-board">
                 <div class="bracket-col-headers">
                     <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="r32">
-                        ⚔️ Round of 32 (16 Matches)
+                        ⚔️ Round of 32 (16 Matches · BO3)
                         <small>14.–17. Januar 2025 · 4 Matches pro Tag</small>
                     </div>
                     <div></div>
                     <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="r16">
-                        🔥 Round of 16 (8 Matches)
+                        🔥 Round of 16 (8 Matches · BO3)
                         <small>18.–19. Januar 2025 · 4 Matches pro Tag</small>
                     </div>
-                    <div class="bracket-col-head">
+                    <div class="bracket-col-head clickable" data-action="open-tournament" data-tournament-id="${escapeHTML(tournament.nextTournamentId)}">
                         ✈️ LAN Finals
                         <small>23.–26. Jan · Kopenhagen</small>
                     </div>
@@ -743,21 +996,105 @@ function renderBracketTab(tournament, participants, matchesMap, isAdmin) {
     `;
 }
 
-function renderRoundTab(tournament, round, participants, matchesMap, isAdmin) {
+function renderClassic8BracketTab(tournament, graph, isAdmin) {
+    const allMatchDefs = getAllTournamentMatchDefs(tournament);
+    const qfIds = ["qf-1", "qf-2", "qf-3", "qf-4"];
+    const sfIds = ["sf-1", "sf-2"];
+    const finalId = "final-1";
+
+    const qfCards = qfIds.map(id => {
+        const d = allMatchDefs[id];
+        return renderMatchCard(tournament.id, d.match, d.dateLabel, d.dayLabel, d.matchFormat, graph, isAdmin);
+    }).join("");
+
+    const sfCards = sfIds.map(id => {
+        const d = allMatchDefs[id];
+        const sA = graph.matchSlots[d.match.fromMatches[0]] || [];
+        const sB = graph.matchSlots[d.match.fromMatches[1]] || [];
+        return `<div class="classic-sf-slot">${renderMatchCard(tournament.id, d.match, d.dateLabel, d.dayLabel, d.matchFormat, graph, isAdmin, [...sA, ...sB])}</div>`;
+    }).join("");
+
+    const fDef = allMatchDefs[finalId];
+    const fPref = [
+        ...(graph.matchSlots["sf-1"] || []),
+        ...(graph.matchSlots["sf-2"] || [])
+    ];
+    const finalCard = renderMatchCard(tournament.id, fDef.match, fDef.dateLabel, fDef.dayLabel, fDef.matchFormat, graph, isAdmin, fPref);
+
+    const champUid = graph.matchWinners[finalId];
+    const champInfo = champUid ? getResolvedParticipant(champUid, graph.participants) : null;
+    const champHtml = champInfo
+        ? `<div class="champion-box"><small>🏆 Champion · 1. Platz</small><strong>${champInfo.icon} ${escapeHTML(champInfo.displayName)}</strong><span>200.000 $ Preisgeld</span></div>`
+        : `<div class="champion-box"><small>🏆 Turniersieger</small><strong>TBD</strong><span>200.000 $ Preisgeld</span></div>`;
+
+    const adminControls = isAdmin ? `
+        <div class="bracket-toolbar">
+            <span class="muted">Admin: Die 8 Gewinner aus dem Vorgängerturnier landen automatisch im Viertelfinale. Über 🏆 legst du die Sieger für Halbfinale &amp; Finale fest.</span>
+            <div class="news-form-actions" style="margin-top:0;">
+                <button type="button" class="btn btn-secondary btn-small" data-action="sync-predecessor-qf" data-tournament-id="${escapeHTML(tournament.id)}">🔄 Qualifizierte Teams neu ins Bracket übernehmen</button>
+                <button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${escapeHTML(tournament.id)}">🧹 Manuelle Matches/Sieger zurücksetzen</button>
+            </div>
+        </div>
+    ` : "";
+
+    return `
+        ${adminControls}
+        <div class="bracket-scroll">
+            <div class="classic-bracket">
+                <div class="classic-col-headers">
+                    <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="qf">
+                        ⚔️ Viertelfinale (4 · BO3)
+                        <small>23.–24. Januar 2025</small>
+                    </div>
+                    <div></div>
+                    <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="sf">
+                        🔥 Halbfinale (2 · BO3)
+                        <small>25. Januar 2025</small>
+                    </div>
+                    <div></div>
+                    <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="final">
+                        🏆 Finale (1 · BO5)
+                        <small>26. Januar 2025</small>
+                    </div>
+                    <div class="bracket-col-head">
+                        🥇 Sieger
+                        <small>500.000 $ Gesamtpreispool</small>
+                    </div>
+                </div>
+                <div class="classic-bracket-body">
+                    <div class="classic-col-qf">${qfCards}</div>
+                    <div class="classic-col-conn-2">
+                        <div class="bracket-connector" aria-hidden="true"></div>
+                        <div class="bracket-connector" aria-hidden="true"></div>
+                    </div>
+                    <div class="classic-col-sf">${sfCards}</div>
+                    <div class="classic-col-conn-1">
+                        <div class="bracket-connector" aria-hidden="true"></div>
+                    </div>
+                    <div class="classic-col-final">${finalCard}</div>
+                    <div class="classic-col-champ">${champHtml}</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderRoundTab(tournament, round, graph, isAdmin) {
+    const roundFmt = round.defaultFormat || "BO3";
     const daysHtml = round.days.map(day => `
         <div class="round-day-card">
             <div class="round-day-header">
                 <strong>${escapeHTML(day.dayLabel)} · ${escapeHTML(day.dateLabel)}</strong>
-                <span>${day.matches.length} Matches</span>
+                <span>${day.matches.length} ${day.matches.length === 1 ? "Match" : "Matches"}</span>
             </div>
             ${day.matches.map(m => {
                 let preferred = [];
-                if (Array.isArray(m.fromR32)) {
-                    const sA = matchesMap[m.fromR32[0]] || [];
-                    const sB = matchesMap[m.fromR32[1]] || [];
+                if (Array.isArray(m.fromMatches)) {
+                    const sA = graph.matchSlots[m.fromMatches[0]] || [];
+                    const sB = graph.matchSlots[m.fromMatches[1]] || [];
                     preferred = [...sA, ...sB].filter(Boolean);
                 }
-                return renderMatchCard(tournament.id, m, day.dateLabel, day.dayLabel, participants, matchesMap, isAdmin, preferred);
+                return renderMatchCard(tournament.id, m, day.dateLabel, day.dayLabel, m.format || roundFmt, graph, isAdmin, preferred);
             }).join("")}
         </div>
     `).join("");
@@ -770,12 +1107,67 @@ function renderRoundTab(tournament, round, participants, matchesMap, isAdmin) {
             </div>
             ${isAdmin && round.id === "r32" ? `
                 <div class="news-form-actions" style="margin-top:0;">
-                    <button type="button" class="btn btn-secondary btn-small" data-action="autofill-r32" data-tournament-id="${escapeHTML(tournament.id)}" ${participants.length === 0 ? "disabled" : ""}>🎲 Teilnehmer in R32 setzen</button>
+                    <button type="button" class="btn btn-secondary btn-small" data-action="autofill-r32" data-tournament-id="${escapeHTML(tournament.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teilnehmer in R32 setzen</button>
                     <button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${escapeHTML(tournament.id)}">🧹 R32/R16 leeren</button>
                 </div>
             ` : ""}
         </div>
         <div class="round-days-grid">${daysHtml}</div>
+    `;
+}
+
+function renderPrizePoolBox(tournament, graph) {
+    if (!tournament.prizePoolTotal || !Array.isArray(tournament.prizeDistribution)) return "";
+
+    const getLoserUid = (matchId) => {
+        const winUid = graph.matchWinners[matchId];
+        const slots = graph.matchSlots[matchId] || [null, null];
+        if (!winUid || !slots[0] || !slots[1]) return null;
+        return winUid === slots[0] ? slots[1] : slots[0];
+    };
+
+    const resolvePlacementTeams = (sourceType) => {
+        if (sourceType === "final-winner") {
+            const uid = graph.matchWinners["final-1"];
+            return uid ? [getResolvedParticipant(uid, graph.participants)].filter(Boolean) : [];
+        }
+        if (sourceType === "final-loser") {
+            const uid = getLoserUid("final-1");
+            return uid ? [getResolvedParticipant(uid, graph.participants)].filter(Boolean) : [];
+        }
+        if (sourceType === "sf-losers") {
+            return ["sf-1", "sf-2"].map(getLoserUid).filter(Boolean).map(u => getResolvedParticipant(u, graph.participants)).filter(Boolean);
+        }
+        if (sourceType === "qf-losers") {
+            return ["qf-1", "qf-2", "qf-3", "qf-4"].map(getLoserUid).filter(Boolean).map(u => getResolvedParticipant(u, graph.participants)).filter(Boolean);
+        }
+        return [];
+    };
+
+    const tiersHtml = tournament.prizeDistribution.map(tier => {
+        const teams = resolvePlacementTeams(tier.sourceType);
+        const teamsText = teams.length > 0
+            ? teams.map(t => `${t.icon} ${escapeHTML(t.displayName)}`).join(" · ")
+            : "Noch offen";
+        return `
+            <div class="prize-tier">
+                <div class="prize-tier-top">
+                    <strong>${escapeHTML(tier.place)}</strong>
+                    <span class="prize-tier-amount">${tier.amount.toLocaleString("de-DE")} $${escapeHTML(tier.labelSuffix || "")}</span>
+                </div>
+                <div class="prize-tier-teams">${teamsText}</div>
+            </div>
+        `;
+    }).join("");
+
+    return `
+        <div class="prize-pool-box">
+            <div class="prize-pool-header">
+                <h3>💰 Preisgeldverteilung</h3>
+                <span class="prize-total">Gesamtpreispool: ${tournament.prizePoolTotal.toLocaleString("de-DE")} $</span>
+            </div>
+            <div class="prize-grid">${tiersHtml}</div>
+        </div>
     `;
 }
 
@@ -795,7 +1187,9 @@ function buildVrsSelectOptions(vrsDate, searchQuery, existingUids) {
     }).join("");
 }
 
-function renderParticipantsTab(tournament, participants, isAdmin) {
+function renderParticipantsTab(tournament, graph, isAdmin) {
+    const participants = graph.participants;
+    const manualParticipants = getManualParticipants(tournament.id);
     const existingUids = new Set(participants.map(p => p.uid));
     const isFull = participants.length >= tournament.maxTeams;
 
@@ -832,7 +1226,7 @@ function renderParticipantsTab(tournament, participants, isAdmin) {
                     <h3>🛡️ Admin: Teams dem Turnier zuweisen (${participants.length} / ${tournament.maxTeams})</h3>
                     <div class="news-form-actions" style="margin-top:0;">
                         <button type="button" class="btn btn-secondary btn-small" data-action="fill-top-vrs" data-tournament-id="${escapeHTML(tournament.id)}" ${isFull || !selectedVrsPickerDate ? "disabled" : ""}>⚡ Freie Plätze mit VRS-Top-Teams auffüllen</button>
-                        <button type="button" class="btn btn-danger btn-small" data-action="clear-participants" data-tournament-id="${escapeHTML(tournament.id)}" ${participants.length === 0 ? "disabled" : ""}>Alle entfernen</button>
+                        <button type="button" class="btn btn-danger btn-small" data-action="clear-participants" data-tournament-id="${escapeHTML(tournament.id)}" ${manualParticipants.length === 0 ? "disabled" : ""}>Manuelle Teams entfernen</button>
                     </div>
                 </div>
                 <div class="assign-grid">
@@ -859,8 +1253,46 @@ function renderParticipantsTab(tournament, participants, isAdmin) {
         `;
     }
 
-    const listHtml = participants.length > 0
-        ? `<div class="participants-grid">${participants.map((p, index) => {
+    let listHtml = "";
+    if (tournament.qualifiedFrom) {
+        const autoCards = graph.autoSlots.map((slot, index) => {
+            if (slot.participant) {
+                const info = getResolvedParticipant(slot.participant.uid, participants);
+                return `
+                    <div class="participant-item auto">
+                        <div class="participant-info">
+                            <strong>#${index + 1} ${info.icon} ${escapeHTML(info.displayName)}</strong>
+                            <small>Automatisch qualifiziert (${escapeHTML(slot.label)})</small>
+                        </div>
+                    </div>
+                `;
+            }
+            return `
+                <div class="participant-item pending">
+                    <div class="participant-info">
+                        <strong>#${index + 1} TBD (${escapeHTML(slot.label)})</strong>
+                        <small>Wird automatisch aus Vorgängerturnier übernommen</small>
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        const manualCards = manualParticipants.map((p, idx) => {
+            const info = getResolvedParticipant(p.uid, participants);
+            return `
+                <div class="participant-item">
+                    <div class="participant-info">
+                        <strong>Manuell #${idx + 1}: ${info.icon} ${escapeHTML(info.displayName)}</strong>
+                        <small>${escapeHTML(info.badgeText)}</small>
+                    </div>
+                    ${isAdmin ? `<button type="button" class="btn btn-danger btn-small" data-action="remove-participant" data-tournament-id="${escapeHTML(tournament.id)}" data-uid="${escapeHTML(p.uid)}" title="Entfernen">×</button>` : ""}
+                </div>
+            `;
+        }).join("");
+
+        listHtml = `<div class="participants-grid">${autoCards}${manualCards}</div>`;
+    } else if (participants.length > 0) {
+        listHtml = `<div class="participants-grid">${participants.map((p, index) => {
             const info = getResolvedParticipant(p.uid, participants);
             return `
                 <div class="participant-item">
@@ -871,8 +1303,10 @@ function renderParticipantsTab(tournament, participants, isAdmin) {
                     ${isAdmin ? `<button type="button" class="btn btn-danger btn-small" data-action="remove-participant" data-tournament-id="${escapeHTML(tournament.id)}" data-uid="${escapeHTML(p.uid)}" title="Entfernen">×</button>` : ""}
                 </div>
             `;
-        }).join("")}</div>`
-        : `<div class="placeholder-box"><span>Noch keine Teams für dieses Turnier eingetragen (0 / ${tournament.maxTeams}).${isAdmin ? " Nutze oben die Admin-Zuweisung, um Spieler- oder VRS-Teams hinzuzufügen." : ""}</span></div>`;
+        }).join("")}</div>`;
+    } else {
+        listHtml = `<div class="placeholder-box"><span>Noch keine Teams für dieses Turnier eingetragen (0 / ${tournament.maxTeams}).${isAdmin ? " Nutze oben die Admin-Zuweisung, um Spieler- oder VRS-Teams hinzuzufügen." : ""}</span></div>`;
+    }
 
     return `${adminPanel}${listHtml}`;
 }
@@ -881,8 +1315,8 @@ function renderTournamentDetail(tournament) {
     const isAdmin = currentUser?.role === "admin";
     const status = getTournamentStatus(tournament);
     const badge = formatCategoryBadge(status);
-    const participants = getTournamentParticipants(tournament.id);
-    const matchesMap = getTournamentMatches(tournament.id);
+    const graph = resolveTournamentGraph(tournament);
+    const participants = graph.participants;
 
     const statusSelectHtml = isAdmin ? `
         <div class="tournament-admin-status">
@@ -899,25 +1333,44 @@ function renderTournamentDetail(tournament) {
         <div class="tournament-notice ${escapeHTML(n.type)}">
             <strong>${n.icon} ${escapeHTML(n.title)}</strong>
             <span>${escapeHTML(n.text)}</span>
+            ${n.linkTournamentId ? `
+                <div class="tournament-notice-actions">
+                    <button type="button" class="tournament-notice-link" data-action="open-tournament" data-tournament-id="${escapeHTML(n.linkTournamentId)}">${escapeHTML(n.linkLabel)}</button>
+                </div>
+            ` : ""}
         </div>
     `).join("");
 
+    const roundTabs = tournament.rounds.map(r => {
+        const icon = r.id === "r32" || r.id === "qf" ? "⚔️" : (r.id === "r16" || r.id === "sf" ? "🔥" : "🏆");
+        const fmtTag = r.defaultFormat ? ` (${r.defaultFormat})` : "";
+        return `<button type="button" class="tournament-subtab ${activeTournamentSubTab === r.id ? "active" : ""}" data-action="switch-subtab" data-subtab="${escapeHTML(r.id)}">${icon} ${escapeHTML(r.name)}${escapeHTML(fmtTag)}</button>`;
+    }).join("");
+
     let subContent = "";
     if (activeTournamentSubTab === "bracket") {
-        subContent = renderBracketTab(tournament, participants, matchesMap, isAdmin);
-    } else if (activeTournamentSubTab === "r32") {
-        subContent = renderRoundTab(tournament, tournament.rounds.find(r => r.id === "r32"), participants, matchesMap, isAdmin);
-    } else if (activeTournamentSubTab === "r16") {
-        subContent = renderRoundTab(tournament, tournament.rounds.find(r => r.id === "r16"), participants, matchesMap, isAdmin);
+        subContent = tournament.bracketType === "classic8"
+            ? renderClassic8BracketTab(tournament, graph, isAdmin)
+            : renderQuali32BracketTab(tournament, graph, isAdmin);
+    } else if (activeTournamentSubTab === "participants") {
+        subContent = renderParticipantsTab(tournament, graph, isAdmin);
     } else {
-        subContent = renderParticipantsTab(tournament, participants, isAdmin);
+        const round = tournament.rounds.find(r => r.id === activeTournamentSubTab);
+        subContent = round
+            ? renderRoundTab(tournament, round, graph, isAdmin)
+            : (tournament.bracketType === "classic8" ? renderClassic8BracketTab(tournament, graph, isAdmin) : renderQuali32BracketTab(tournament, graph, isAdmin));
     }
+
+    const prizeStatHtml = tournament.prizePoolTotal
+        ? `<div class="stat-box"><span class="stat-label">Gesamtpreispool</span><span class="stat-value" style="color:var(--accent-orange);">${tournament.prizePoolTotal.toLocaleString("de-DE")} $</span></div>`
+        : `<div class="stat-box"><span class="stat-label">Anreise bei Top 8</span><span class="stat-value">${escapeHTML(tournament.travelWindow)}</span></div>`;
 
     return `
         <div class="card">
             <div class="tournament-detail-topbar">
                 <button type="button" class="btn btn-secondary btn-small" data-action="back-to-overview">← Zurück zur Turnierübersicht</button>
                 <div class="row" style="display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
+                    ${tournament.prizePoolTotal ? `<span class="t-badge t-badge-prize">💰 ${tournament.prizePoolTotal.toLocaleString("de-DE")} $ Preispool</span>` : ""}
                     <span class="t-badge ${badge.cls}">${badge.label}</span>
                     ${statusSelectHtml}
                 </div>
@@ -927,19 +1380,20 @@ function renderTournamentDetail(tournament) {
             <p class="muted-text">${escapeHTML(tournament.formatSummary)}</p>
 
             <div class="tournament-info-grid">
-                <div class="stat-box"><span class="stat-label">Online-Phase</span><span class="stat-value">${escapeHTML(tournament.onlineDates)}</span></div>
-                <div class="stat-box"><span class="stat-label">Online-Standort</span><span class="stat-value">${escapeHTML(tournament.onlineRegion)}</span></div>
-                <div class="stat-box"><span class="stat-label">Anreise bei Top 8</span><span class="stat-value">${escapeHTML(tournament.travelWindow)}</span></div>
-                <div class="stat-box"><span class="stat-label">LAN Finals</span><span class="stat-value">${escapeHTML(tournament.lanDates)} · ${escapeHTML(tournament.lanLocation)}</span></div>
+                <div class="stat-box"><span class="stat-label">Zeitraum</span><span class="stat-value">${escapeHTML(tournament.onlineDates)}</span></div>
+                <div class="stat-box"><span class="stat-label">Austragungsort</span><span class="stat-value">${escapeHTML(tournament.onlineRegion)}</span></div>
+                <div class="stat-box"><span class="stat-label">Match-Format</span><span class="stat-value">${escapeHTML(tournament.matchFormatSummary)}</span></div>
+                ${prizeStatHtml}
+                <div class="stat-box"><span class="stat-label">LAN Finals Ort</span><span class="stat-value">${escapeHTML(tournament.lanDates)} · ${escapeHTML(tournament.lanLocation)}</span></div>
                 <div class="stat-box"><span class="stat-label">Teilnehmer</span><span class="stat-value">${participants.length} / ${tournament.maxTeams} Teams</span></div>
             </div>
 
+            ${renderPrizePoolBox(tournament, graph)}
             <div class="tournament-notices">${noticesHtml}</div>
 
             <div class="tournament-subtabs" role="tablist">
                 <button type="button" class="tournament-subtab ${activeTournamentSubTab === "bracket" ? "active" : ""}" data-action="switch-subtab" data-subtab="bracket">🌳 Turnierbaum</button>
-                <button type="button" class="tournament-subtab ${activeTournamentSubTab === "r32" ? "active" : ""}" data-action="switch-subtab" data-subtab="r32">⚔️ Round of 32</button>
-                <button type="button" class="tournament-subtab ${activeTournamentSubTab === "r16" ? "active" : ""}" data-action="switch-subtab" data-subtab="r16">🔥 Round of 16</button>
+                ${roundTabs}
                 <button type="button" class="tournament-subtab ${activeTournamentSubTab === "participants" ? "active" : ""}" data-action="switch-subtab" data-subtab="participants">👥 Teilnehmer (${participants.length}/${tournament.maxTeams})</button>
             </div>
 
@@ -971,17 +1425,21 @@ function renderTournamentOverview() {
         ? `<div class="tournament-list">${activeList.map(t => {
             const st = getTournamentStatus(t);
             const badge = formatCategoryBadge(st);
-            const participants = getTournamentParticipants(t.id);
+            const graph = resolveTournamentGraph(t);
             return `
                 <button type="button" class="tournament-card" data-action="open-tournament" data-tournament-id="${escapeHTML(t.id)}">
                     <div class="tournament-card-top">
                         <span class="tournament-card-title">🏅 ${escapeHTML(t.name)}</span>
-                        <span class="t-badge ${badge.cls}">${badge.label}</span>
+                        <div class="row" style="display:flex; gap:8px; flex-wrap:wrap;">
+                            ${t.prizePoolTotal ? `<span class="t-badge t-badge-prize">💰 ${t.prizePoolTotal.toLocaleString("de-DE")} $</span>` : ""}
+                            <span class="t-badge ${badge.cls}">${badge.label}</span>
+                        </div>
                     </div>
                     <div class="tournament-card-meta">
-                        <span>📅 Online: ${escapeHTML(t.onlineDates)} (${escapeHTML(t.onlineRegion)})</span>
-                        <span>✈️ LAN Finals: ${escapeHTML(t.lanDates)} (${escapeHTML(t.lanLocation)})</span>
-                        <span>👥 ${participants.length} / ${t.maxTeams} Teams</span>
+                        <span>📅 Zeitraum: ${escapeHTML(t.onlineDates)} (${escapeHTML(t.onlineRegion)})</span>
+                        ${t.bracketType === "quali32" ? `<span>✈️ LAN Finals: ${escapeHTML(t.lanDates)} (${escapeHTML(t.lanLocation)})</span>` : ""}
+                        <span>🎮 Format: ${escapeHTML(t.matchFormatSummary)}</span>
+                        <span>👥 ${graph.participants.length} / ${t.maxTeams} Teams</span>
                         <span>🌍 ${escapeHTML(t.inviteSummary)}</span>
                     </div>
                     <div class="tournament-card-foot">
@@ -1018,7 +1476,7 @@ function renderTournamentsView() {
     if (!root) return;
 
     if (activeTournamentId) {
-        const tournament = TOURNAMENTS_DATA.find(t => t.id === activeTournamentId);
+        const tournament = getTournamentById(activeTournamentId);
         if (tournament) {
             root.innerHTML = renderTournamentDetail(tournament);
             if (currentView === "turniere") {
@@ -1052,9 +1510,14 @@ function setupTournamentEvents() {
         const action = actionEl.dataset.action;
 
         if (action === "open-tournament") {
+            const targetTournament = getTournamentById(actionEl.dataset.tournamentId);
+            if (targetTournament) {
+                activeTournamentCategory = getTournamentStatus(targetTournament);
+            }
             activeTournamentId = actionEl.dataset.tournamentId;
             activeTournamentSubTab = "bracket";
             renderTournamentsView();
+            document.querySelector(".content-body")?.scrollTo({ top: 0, behavior: "smooth" });
             return;
         }
 
@@ -1073,22 +1536,39 @@ function setupTournamentEvents() {
         // Ab hier nur Admin-Aktionen
         if (currentUser?.role !== "admin") return;
         const tId = actionEl.dataset.tournamentId;
-        const tournament = TOURNAMENTS_DATA.find(t => t.id === tId);
+        const tournament = getTournamentById(tId);
         if (!tournament) return;
 
         const state = getTournamentsState();
-        if (!state[tId]) state[tId] = { participants: [], matches: {} };
+        if (!state[tId]) state[tId] = { participants: [], matches: {}, winners: {} };
         if (!Array.isArray(state[tId].participants)) state[tId].participants = [];
         if (!state[tId].matches) state[tId].matches = {};
+        if (!state[tId].winners) state[tId].winners = {};
+
+        if (action === "toggle-winner") {
+            const matchId = actionEl.dataset.matchId;
+            const uid = actionEl.dataset.uid;
+            if (!uid) return;
+            if (state[tId].winners[matchId] === uid) {
+                delete state[tId].winners[matchId];
+            } else {
+                state[tId].winners[matchId] = uid;
+            }
+            saveTournamentsState(state);
+            renderTournamentsView();
+            return;
+        }
 
         if (action === "add-player-team") {
+            const graph = resolveTournamentGraph(tournament);
+            if (graph.participants.length >= tournament.maxTeams) return;
             const select = document.getElementById("tournament-player-select");
             const username = select?.value;
-            if (!username || state[tId].participants.length >= tournament.maxTeams) return;
+            if (!username) return;
             const player = getPlayers().find(p => p.username === username);
             if (!player) return;
             const uid = `player:${player.username}`;
-            if (state[tId].participants.some(p => p.uid === uid)) return;
+            if (graph.participants.some(p => p.uid === uid)) return;
 
             state[tId].participants.push({
                 uid,
@@ -1102,10 +1582,12 @@ function setupTournamentEvents() {
         }
 
         if (action === "add-vrs-team") {
+            const graph = resolveTournamentGraph(tournament);
+            if (graph.participants.length >= tournament.maxTeams) return;
             const select = document.getElementById("tournament-vrs-select");
             const uid = select?.value;
-            if (!uid || !selectedVrsPickerDate || state[tId].participants.length >= tournament.maxTeams) return;
-            if (state[tId].participants.some(p => p.uid === uid)) return;
+            if (!uid || !selectedVrsPickerDate) return;
+            if (graph.participants.some(p => p.uid === uid)) return;
 
             const vrsEntry = getVrsEntriesForDate(selectedVrsPickerDate).find(entry => entry.uid === uid);
             if (!vrsEntry) return;
@@ -1125,10 +1607,12 @@ function setupTournamentEvents() {
 
         if (action === "fill-top-vrs") {
             if (!selectedVrsPickerDate) return;
+            const graph = resolveTournamentGraph(tournament);
+            let totalCount = graph.participants.length;
+            const existing = new Set(graph.participants.map(p => p.uid));
             const entries = getVrsEntriesForDate(selectedVrsPickerDate);
-            const existing = new Set(state[tId].participants.map(p => p.uid));
             for (const entry of entries) {
-                if (state[tId].participants.length >= tournament.maxTeams) break;
+                if (totalCount >= tournament.maxTeams) break;
                 if (existing.has(entry.uid)) continue;
                 state[tId].participants.push({
                     uid: entry.uid,
@@ -1139,6 +1623,7 @@ function setupTournamentEvents() {
                     region: entry.region
                 });
                 existing.add(entry.uid);
+                totalCount++;
             }
             saveTournamentsState(state);
             renderTournamentsView();
@@ -1150,6 +1635,7 @@ function setupTournamentEvents() {
             state[tId].participants = state[tId].participants.filter(p => p.uid !== uid);
             for (const mId of Object.keys(state[tId].matches)) {
                 state[tId].matches[mId] = state[tId].matches[mId].map(slot => (slot === uid ? null : slot));
+                if (state[tId].winners[mId] === uid) delete state[tId].winners[mId];
             }
             saveTournamentsState(state);
             renderTournamentsView();
@@ -1157,16 +1643,17 @@ function setupTournamentEvents() {
         }
 
         if (action === "clear-participants") {
-            if (!confirm("Wirklich alle zugewiesenen Teams aus diesem Turnier entfernen?")) return;
+            if (!confirm("Wirklich alle manuell zugewiesenen Teams aus diesem Turnier entfernen?")) return;
             state[tId].participants = [];
             state[tId].matches = {};
+            state[tId].winners = {};
             saveTournamentsState(state);
             renderTournamentsView();
             return;
         }
 
         if (action === "autofill-r32") {
-            const list = state[tId].participants;
+            const list = resolveTournamentGraph(tournament).participants;
             const r32 = tournament.rounds.find(r => r.id === "r32");
             let idx = 0;
             r32.days.forEach(day => {
@@ -1178,6 +1665,15 @@ function setupTournamentEvents() {
                     idx += 2;
                 });
             });
+            state[tId].winners = {};
+            saveTournamentsState(state);
+            renderTournamentsView();
+            return;
+        }
+
+        if (action === "sync-predecessor-qf") {
+            state[tId].matches = {};
+            state[tId].winners = {};
             saveTournamentsState(state);
             renderTournamentsView();
             return;
@@ -1185,6 +1681,7 @@ function setupTournamentEvents() {
 
         if (action === "clear-matches") {
             state[tId].matches = {};
+            state[tId].winners = {};
             saveTournamentsState(state);
             renderTournamentsView();
         }
@@ -1203,7 +1700,7 @@ function setupTournamentEvents() {
             const tId = e.target.dataset.tournamentId;
             const newStatus = e.target.value;
             const state = getTournamentsState();
-            if (!state[tId]) state[tId] = { participants: [], matches: {} };
+            if (!state[tId]) state[tId] = { participants: [], matches: {}, winners: {} };
             state[tId].status = newStatus;
             activeTournamentCategory = newStatus;
             saveTournamentsState(state);
@@ -1217,12 +1714,23 @@ function setupTournamentEvents() {
             const slotIdx = Number(e.target.dataset.slot);
             const val = e.target.value || null;
 
+            const tournament = getTournamentById(tId);
+            const prevGraph = tournament ? resolveTournamentGraph(tournament) : null;
+            const prevUid = prevGraph?.matchSlots[matchId]?.[slotIdx] || null;
+
             const state = getTournamentsState();
-            if (!state[tId]) state[tId] = { participants: [], matches: {} };
+            if (!state[tId]) state[tId] = { participants: [], matches: {}, winners: {} };
             if (!state[tId].matches) state[tId].matches = {};
-            if (!Array.isArray(state[tId].matches[matchId])) state[tId].matches[matchId] = [null, null];
+            if (!state[tId].winners) state[tId].winners = {};
+            if (!Array.isArray(state[tId].matches[matchId])) {
+                state[tId].matches[matchId] = [undefined, undefined];
+            }
 
             state[tId].matches[matchId][slotIdx] = val;
+            if (prevUid && state[tId].winners[matchId] === prevUid && val !== prevUid) {
+                delete state[tId].winners[matchId];
+            }
+
             saveTournamentsState(state);
             renderTournamentsView();
         }
@@ -1232,8 +1740,9 @@ function setupTournamentEvents() {
         if (e.target.id !== "tournament-vrs-search") return;
         vrsSearchTerm = e.target.value;
         const select = document.getElementById("tournament-vrs-select");
-        if (!select || !activeTournamentId || !selectedVrsPickerDate) return;
-        const existingUids = new Set(getTournamentParticipants(activeTournamentId).map(p => p.uid));
+        const tournament = getTournamentById(activeTournamentId);
+        if (!select || !tournament || !selectedVrsPickerDate) return;
+        const existingUids = new Set(resolveTournamentGraph(tournament).participants.map(p => p.uid));
         select.innerHTML = buildVrsSelectOptions(selectedVrsPickerDate, vrsSearchTerm, existingUids);
     });
 }
