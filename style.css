@@ -820,6 +820,60 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent-blue); }
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
 }
+/* Spielzeiten (Match-Schedule) */
+.match-schedule-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.match-time-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: .72rem;
+    cursor: pointer;
+    transition: border-color .15s;
+}
+.match-time-label:hover { border-color: var(--accent-orange); }
+.match-time-input {
+    width: auto;
+    padding: 1px 2px;
+    font-size: .74rem;
+    border: 0;
+    background: transparent;
+    color: #fcd34d;
+    font-family: monospace;
+    font-weight: 700;
+    outline: none;
+    cursor: pointer;
+}
+.match-time-input::-webkit-calendar-picker-indicator {
+    filter: invert(0.8);
+    cursor: pointer;
+    padding: 0;
+    margin-left: 2px;
+}
+.match-time-pill {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(245, 158, 11, 0.14);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #fcd34d;
+    font-weight: 600;
+    font-size: .72rem;
+    white-space: nowrap;
+}
+.match-time-pill.empty {
+    background: var(--bg-panel);
+    border-color: var(--border-color);
+    color: var(--text-muted);
+    font-weight: 400;
+}
 
 @media (max-width: 760px) {
     .app-container { flex-direction: column; }
