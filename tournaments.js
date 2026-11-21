@@ -911,43 +911,6 @@ export function createTournamentsModule(deps) {
         `;
     }
 
-    function renderSwissTab(t, graph, admin) {
-        return (t.swissGroups || []).map(g => {
-            const standingRows = (graph.swissStandings[g.id] || []).map((row, idx) => {
-                const info = getResolvedParticipant(row.uid, graph.participants);
-                const statusTxt = row.wins >= g.winsToAdvance ? "✅ Weiter" : (row.losses >= g.lossesToEliminate ? "❌ Raus" : "⚔️ Aktiv");
-                const cls = row.wins >= g.winsToAdvance ? "row-qualified" : (row.losses >= g.lossesToEliminate ? "row-eliminated" : "");
-                return `<tr class="${cls}"><td>${idx + 1}</td><td>${info ? `${info.icon} ${esc(info.displayName)}` : "–"}</td><td><strong>${row.wins} - ${row.losses}</strong></td><td>${statusTxt}</td></tr>`;
-            }).join("");
-
-            const roundsHtml = g.rounds.map((r, rIdx) => `
-                <div class="round-day-card">
-                    <div class="round-day-header">
-                        <strong>${esc(r.name)} (${esc(r.dateLabel)})</strong>
-                        ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="pair-swiss-round" data-tournament-id="${esc(t.id)}" data-group-id="${esc(g.id)}" data-round-index="${rIdx}" ${graph.participants.length < 2 ? "disabled" : ""}>⚡ Paaren</button>` : `<span>${r.matches.length} Matches</span>`}
-                    </div>
-                    ${r.matches.map(m => renderMatchCard(t.id, m, r.dateLabel, r.name, m.format, graph, admin)).join("")}
-                </div>
-            `).join("");
-
-            return `
-                <div class="stage-group-block">
-                    <div class="bracket-toolbar">
-                        <h3>🇨🇭 ${esc(g.name)} (${g.teamCount} Teams · ${g.winsToAdvance} Siege = Weiter, ${g.lossesToEliminate} Niederlagen = Raus)</h3>
-                        ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten verteilen</button>` : ""}
-                    </div>
-                    <div class="ranking-table-wrap" style="margin-bottom:14px;">
-                        <table class="ranking-table stage-table">
-                            <thead><tr><th>#</th><th>Team</th><th>Bilanz (S-N)</th><th>Status</th></tr></thead>
-                            <tbody>${standingRows || `<tr><td colspan="4" class="muted">Noch keine Teams zugewiesen.</td></tr>`}</tbody>
-                        </table>
-                    </div>
-                    <div class="round-days-grid">${roundsHtml}</div>
-                </div>
-            `;
-        }).join("");
-    }
-
     function renderGslTab(t, graph, admin) {
         return (t.deGroups || []).map((g, gIdx) => {
             const byRound = {};
@@ -1007,14 +970,77 @@ export function createTournamentsModule(deps) {
         }).join("");
     }
 
+function renderRoundTab(t, round, graph, admin, rIdx) {
+        const fmt = round.defaultFormat || t.defaultFormat || "BO3";
+        const daysHtml = round.days.map((d, dIdx) => `
+            <div class="round-day-card">
+                <div class="round-day-header">
+                    <div><strong>${esc(d.dayLabel)} · ${esc(d.dateLabel)}</strong></div>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        <span>${d.matches.length} Matches</span>
+                        ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="round-day" data-tournament-id="${esc(t.id)}" data-target-id="${esc(round.id)}" data-sub-index="${dIdx}" data-current-val="${esc(d.dateLabel)}" title="Datum manuell bearbeiten">✏️ Datum</button>` : ""}
+                    </div>
+                </div>
+                ${d.matches.map(m => renderMatchCard(t.id, m, d.dateLabel, d.dayLabel, m.format || fmt, graph, admin)).join("")}
+            </div>
+        `).join("");
+        return `<div class="bracket-toolbar"><div><h3>${esc(round.name)}</h3><p class="muted">${esc(round.subtitle || "")}</p></div>${admin && rIdx === 0 && !t.qualifiedFrom ? `<button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teilnehmer setzen</button>` : ""}</div><div class="round-days-grid">${daysHtml}</div>`;
+    }
+
+    function renderSwissTab(t, graph, admin) {
+        return (t.swissGroups || []).map(g => {
+            const standingRows = (graph.swissStandings[g.id] || []).map((row, idx) => {
+                const info = getResolvedParticipant(row.uid, graph.participants);
+                const statusTxt = row.wins >= g.winsToAdvance ? "✅ Weiter" : (row.losses >= g.lossesToEliminate ? "❌ Raus" : "⚔️ Aktiv");
+                const cls = row.wins >= g.winsToAdvance ? "row-qualified" : (row.losses >= g.lossesToEliminate ? "row-eliminated" : "");
+                return `<tr class="${cls}"><td>${idx + 1}</td><td>${info ? `${info.icon} ${esc(info.displayName)}` : "–"}</td><td><strong>${row.wins} - ${row.losses}</strong></td><td>${statusTxt}</td></tr>`;
+            }).join("");
+
+            const roundsHtml = g.rounds.map((r, rIdx) => `
+                <div class="round-day-card">
+                    <div class="round-day-header">
+                        <div><strong>${esc(r.name)} (${esc(r.dateLabel)})</strong></div>
+                        <div style="display:flex; gap:6px; align-items:center;">
+                            ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="swiss-round" data-tournament-id="${esc(t.id)}" data-target-id="${esc(g.id)}" data-sub-index="${rIdx}" data-current-val="${esc(r.dateLabel)}" title="Datum manuell bearbeiten">✏️ Datum</button>` : ""}
+                            ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="pair-swiss-round" data-tournament-id="${esc(t.id)}" data-group-id="${esc(g.id)}" data-round-index="${rIdx}" ${graph.participants.length < 2 ? "disabled" : ""}>⚡ Paaren</button>` : `<span>${r.matches.length} Matches</span>`}
+                        </div>
+                    </div>
+                    ${r.matches.map(m => renderMatchCard(t.id, m, r.dateLabel, r.name, m.format, graph, admin)).join("")}
+                </div>
+            `).join("");
+
+            return `
+                <div class="stage-group-block">
+                    <div class="bracket-toolbar">
+                        <h3>🇨🇭 ${esc(g.name)} (${g.teamCount} Teams · ${g.winsToAdvance} Siege = Weiter, ${g.lossesToEliminate} Niederlagen = Raus)</h3>
+                        ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten verteilen</button>` : ""}
+                    </div>
+                    <div class="ranking-table-wrap" style="margin-bottom:14px;">
+                        <table class="ranking-table stage-table">
+                            <thead><tr><th>#</th><th>Team</th><th>Bilanz (S-N)</th><th>Status</th></tr></thead>
+                            <tbody>${standingRows || `<tr><td colspan="4" class="muted">Noch keine Teams zugewiesen.</td></tr>`}</tbody>
+                        </table>
+                    </div>
+                    <div class="round-days-grid">${roundsHtml}</div>
+                </div>
+            `;
+        }).join("");
+    }
+
     function renderPlayInTab(t, graph, admin) {
         const stage = t.playInStage;
         if (!stage) return "";
         const matchesHtml = stage.rounds.map(r => `
             <div class="round-days-grid">
-                ${r.days.map(d => `
+                ${r.days.map((d, dIdx) => `
                     <div class="round-day-card">
-                        <div class="round-day-header"><strong>${esc(d.dayLabel)} · ${esc(d.dateLabel)}</strong><span>${d.matches.length} Matches</span></div>
+                        <div class="round-day-header">
+                            <div><strong>${esc(d.dayLabel)} · ${esc(d.dateLabel)}</strong></div>
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                <span>${d.matches.length} Matches</span>
+                                ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="playin-day" data-tournament-id="${esc(t.id)}" data-target-id="${esc(r.id)}" data-sub-index="${dIdx}" data-current-val="${esc(d.dateLabel)}" title="Datum manuell bearbeiten">✏️ Datum</button>` : ""}
+                            </div>
+                        </div>
                         ${d.matches.map(m => renderMatchCard(t.id, m, d.dateLabel, d.dayLabel, m.format, graph, admin)).join("")}
                     </div>
                 `).join("")}
@@ -1033,17 +1059,6 @@ export function createTournamentsModule(deps) {
                 ${matchesHtml}
             </div>
         `;
-    }
-
-    function renderRoundTab(t, round, graph, admin, rIdx) {
-        const fmt = round.defaultFormat || t.defaultFormat || "BO3";
-        const daysHtml = round.days.map(d => `
-            <div class="round-day-card">
-                <div class="round-day-header"><strong>${esc(d.dayLabel)} · ${esc(d.dateLabel)}</strong><span>${d.matches.length} Matches</span></div>
-                ${d.matches.map(m => renderMatchCard(t.id, m, d.dateLabel, d.dayLabel, m.format || fmt, graph, admin)).join("")}
-            </div>
-        `).join("");
-        return `<div class="bracket-toolbar"><div><h3>${esc(round.name)}</h3><p class="muted">${esc(round.subtitle || "")}</p></div>${admin && rIdx === 0 && !t.qualifiedFrom ? `<button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teilnehmer setzen</button>` : ""}</div><div class="round-days-grid">${daysHtml}</div>`;
     }
 
     function renderPrizePoolBox(t, graph) {
@@ -1577,6 +1592,29 @@ export function createTournamentsModule(deps) {
             clone.matchTimes = clone.matchTimes || {};
             clone.winners = clone.winners || {};
 
+            if (action === "edit-date-label") {
+                const pathType = el.dataset.pathType;
+                const targetId = el.dataset.targetId;
+                const subIndex = Number(el.dataset.subIndex);
+                const currentVal = el.dataset.currentVal || "";
+                const newVal = prompt("Neues Datum / Label für diesen Spieltag eingeben (z. B. 30. Januar 2025):", currentVal);
+                if (!newVal || newVal.trim() === "") return;
+
+                const clone = structuredClone(t);
+                if (pathType === "round-day") {
+                    const rnd = (clone.rounds || []).find(x => x.id === targetId);
+                    if (rnd && rnd.days[subIndex]) rnd.days[subIndex].dateLabel = newVal.trim();
+                } else if (pathType === "swiss-round") {
+                    const grp = (clone.swissGroups || []).find(x => x.id === targetId);
+                    if (grp && grp.rounds[subIndex]) grp.rounds[subIndex].dateLabel = newVal.trim();
+                } else if (pathType === "playin-day") {
+                    const piRound = clone.playInStage?.rounds?.find(x => x.id === targetId);
+                    if (piRound && piRound.days[subIndex]) piRound.days[subIndex].dateLabel = newVal.trim();
+                }
+                await saveTournamentDoc(clone);
+                return;
+            }
+            
             if (action === "toggle-winner") {
                 const mId = el.dataset.matchId, uid = el.dataset.uid;
                 if (!uid) return;
