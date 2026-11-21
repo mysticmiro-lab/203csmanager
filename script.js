@@ -7,18 +7,141 @@ const STORAGE_KEYS = {
     ADMIN_PASS: "hltv_game_admin_password",
     MESSAGES: "hltv_game_forum_messages",
     NEWS: "hltv_game_news",
-    SESSION: "hltv_game_session"
+    SESSION: "hltv_game_session",
+    TOURNAMENTS: "hltv_game_tournaments_v1"
 };
+
+// ==================== TURNIER-KONFIGURATION ====================
+const TOURNAMENTS_DATA = [
+    {
+        id: "blast-bounty-2025-s1",
+        name: "Blast Bounty 2025 Season 1",
+        defaultStatus: "zukuenftig", // "laufend" | "zukuenftig" | "vergangen"
+        maxTeams: 32,
+        onlineDates: "14.–19. Januar 2025",
+        onlineRegion: "Europa (Online)",
+        lanDates: "23.–26. Januar 2025",
+        lanLocation: "Kopenhagen, Dänemark",
+        travelWindow: "20.–22. Januar 2025",
+        formatSummary: "Round of 32 → Round of 16 → Top 8 qualifizieren sich für die LAN Finals",
+        inviteSummary: "Top 32 der Weltrangliste (keine Regionsspezifikation)",
+        notices: [
+            {
+                type: "info",
+                icon: "📍",
+                title: "Standort-Pflicht (Online-Phase)",
+                text: "Dein Team muss sich in Europa befinden, um vom 14.–19. Januar 2025 online an dieser Qualifikationsrunde teilzunehmen."
+            },
+            {
+                type: "warning",
+                icon: "✈️",
+                title: "Reisehinweis bei Weiterkommen (Top 8)",
+                text: "Falls sich dein Team für die Top 8 qualifiziert, musst du vom 20.–22. Januar 2025 nach Kopenhagen (Dänemark) reisen, um dort vom 23.–26. Januar 2025 bei den LAN Finals weiterzuspielen."
+            },
+            {
+                type: "neutral",
+                icon: "🌍",
+                title: "Einladungsmodus",
+                text: "Eingeladen werden die Top 32 Teams aus der Weltrangliste (VRS). Es gibt keine Regionsspezifikation."
+            }
+        ],
+        rounds: [
+            {
+                id: "r32",
+                name: "Round of 32",
+                shortName: "R32",
+                subtitle: "16 Matches · Jeweils 4 Matches pro Tag (14.–17. Januar 2025)",
+                days: [
+                    {
+                        dayLabel: "Tag 1",
+                        dateLabel: "14. Januar 2025",
+                        matches: [
+                            { id: "r32-1", label: "R32 Match 1" },
+                            { id: "r32-2", label: "R32 Match 2" },
+                            { id: "r32-3", label: "R32 Match 3" },
+                            { id: "r32-4", label: "R32 Match 4" }
+                        ]
+                    },
+                    {
+                        dayLabel: "Tag 2",
+                        dateLabel: "15. Januar 2025",
+                        matches: [
+                            { id: "r32-5", label: "R32 Match 5" },
+                            { id: "r32-6", label: "R32 Match 6" },
+                            { id: "r32-7", label: "R32 Match 7" },
+                            { id: "r32-8", label: "R32 Match 8" }
+                        ]
+                    },
+                    {
+                        dayLabel: "Tag 3",
+                        dateLabel: "16. Januar 2025",
+                        matches: [
+                            { id: "r32-9", label: "R32 Match 9" },
+                            { id: "r32-10", label: "R32 Match 10" },
+                            { id: "r32-11", label: "R32 Match 11" },
+                            { id: "r32-12", label: "R32 Match 12" }
+                        ]
+                    },
+                    {
+                        dayLabel: "Tag 4",
+                        dateLabel: "17. Januar 2025",
+                        matches: [
+                            { id: "r32-13", label: "R32 Match 13" },
+                            { id: "r32-14", label: "R32 Match 14" },
+                            { id: "r32-15", label: "R32 Match 15" },
+                            { id: "r32-16", label: "R32 Match 16" }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: "r16",
+                name: "Round of 16",
+                shortName: "R16",
+                subtitle: "8 Matches · Jeweils 4 Matches pro Tag (18.–19. Januar 2025) → Sieger erreichen die Top 8 LAN Finals",
+                days: [
+                    {
+                        dayLabel: "Tag 5",
+                        dateLabel: "18. Januar 2025",
+                        matches: [
+                            { id: "r16-1", label: "R16 Match 1", fromR32: ["r32-1", "r32-2"] },
+                            { id: "r16-2", label: "R16 Match 2", fromR32: ["r32-3", "r32-4"] },
+                            { id: "r16-3", label: "R16 Match 3", fromR32: ["r32-5", "r32-6"] },
+                            { id: "r16-4", label: "R16 Match 4", fromR32: ["r32-7", "r32-8"] }
+                        ]
+                    },
+                    {
+                        dayLabel: "Tag 6",
+                        dateLabel: "19. Januar 2025",
+                        matches: [
+                            { id: "r16-5", label: "R16 Match 5", fromR32: ["r32-9", "r32-10"] },
+                            { id: "r16-6", label: "R16 Match 6", fromR32: ["r32-11", "r32-12"] },
+                            { id: "r16-7", label: "R16 Match 7", fromR32: ["r32-13", "r32-14"] },
+                            { id: "r16-8", label: "R16 Match 8", fromR32: ["r32-15", "r32-16"] }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+];
 
 // ==================== ZUSTAND (STATE) ====================
 let currentUser = null; // { username: string, role: 'admin' | 'player' }
 let currentView = "tutorial";
 let activeTeamUsername = null;
 
+// Turnier-UI-Zustand
+let activeTournamentCategory = "laufend";
+let activeTournamentId = null;
+let activeTournamentSubTab = "bracket"; // "bracket" | "r32" | "r16" | "participants"
+let selectedVrsPickerDate = "";
+let vrsSearchTerm = "";
+
 // ==================== HILFSFUNKTIONEN ====================
 function escapeHTML(str) {
     const div = document.createElement("div");
-    div.textContent = str;
+    div.textContent = String(str ?? "");
     return div.innerHTML;
 }
 
@@ -49,7 +172,6 @@ function saveAdminPassword(newPass) {
 
 function getPlayers() {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.PLAYERS)) || [];
-    // Abwärtskompatibilität falls noch alte String-Einträge im Speicher liegen
     let migrated = false;
     const normalized = raw.map(item => {
         if (typeof item === "string") {
@@ -73,6 +195,10 @@ function savePlayers(players) {
     localStorage.setItem(STORAGE_KEYS.PLAYERS, JSON.stringify(players));
 }
 
+function getPlayerTeamDisplayName(player) {
+    return String(player.teamName || player.team_name || `Team ${player.username}`).trim();
+}
+
 function getMessages() {
     return JSON.parse(localStorage.getItem(STORAGE_KEYS.MESSAGES)) || [];
 }
@@ -85,7 +211,6 @@ function getNews() {
     const stored = localStorage.getItem(STORAGE_KEYS.NEWS);
     if (stored) return JSON.parse(stored);
 
-    // Standard-News beim ersten Start
     const defaultNews = [
         {
             id: 1,
@@ -103,14 +228,27 @@ function saveNews(newsList) {
     localStorage.setItem(STORAGE_KEYS.NEWS, JSON.stringify(newsList));
 }
 
+function getTournamentsState() {
+    try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEYS.TOURNAMENTS)) || {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function saveTournamentsState(state) {
+    localStorage.setItem(STORAGE_KEYS.TOURNAMENTS, JSON.stringify(state));
+}
+
 // ==================== INITIALISIERUNG ====================
 document.addEventListener("DOMContentLoaded", () => {
     setupAuthEvents();
     setupAppEvents();
     setupPasswordModalEvents();
+    setupTournamentEvents();
     checkExistingSession();
+    renderTournamentsView();
 
-    // Live-Synchronisation zwischen mehreren offenen Browser-Tabs
     window.addEventListener("storage", (e) => {
         if (!currentUser) return;
 
@@ -124,6 +262,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             renderTeamSidebar();
             renderAdminPlayerList();
+            renderTournamentsView();
             if (currentView === "team" && activeTeamUsername && !players.some(p => p.username === activeTeamUsername)) {
                 switchView("tutorial");
             }
@@ -135,6 +274,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (e.key === STORAGE_KEYS.NEWS) {
             renderNews();
+        }
+
+        if (e.key === STORAGE_KEYS.TOURNAMENTS || e.key === "hltv_game_ranking_date") {
+            renderTournamentsView();
         }
     });
 });
@@ -162,7 +305,6 @@ function setupAuthEvents() {
         });
     });
 
-    // Spieler-Login (Benutzername + Passwort)
     playerForm.addEventListener("submit", (e) => {
         e.preventDefault();
         const usernameInput = document.getElementById("player-username").value.trim();
@@ -180,7 +322,6 @@ function setupAuthEvents() {
         playerForm.reset();
     });
 
-    // Admin-Login
     adminForm.addEventListener("submit", (e) => {
         e.preventDefault();
         const user = document.getElementById("admin-username").value.trim();
@@ -235,12 +376,10 @@ function showApp() {
     document.getElementById("auth-screen").classList.add("hidden");
     document.getElementById("app-screen").classList.remove("hidden");
 
-    // Benutzeranzeige in Sidebar aktualisieren
     document.getElementById("current-user-name").textContent = currentUser.username;
     document.getElementById("current-user-role").textContent = currentUser.role === "admin" ? "Administrator" : "Spieler";
     document.getElementById("user-avatar").textContent = currentUser.username.charAt(0);
 
-    // Admin-Elemente ein-/ausblenden
     const adminNav = document.getElementById("admin-nav-li");
     const adminNewsCreator = document.getElementById("admin-news-creator");
     if (currentUser.role === "admin") {
@@ -255,28 +394,29 @@ function showApp() {
     renderAdminPlayerList();
     renderNews();
     renderForumMessages();
+    renderTournamentsView();
     switchView("tutorial");
 }
 
 function setupAppEvents() {
-    // Abmelden
     document.getElementById("logout-btn").addEventListener("click", logout);
 
-    // Hauptnavigation (statische Menüpunkte)
     document.getElementById("main-nav-list").addEventListener("click", (e) => {
         const btn = e.target.closest(".nav-item");
         if (!btn) return;
+        if (btn.dataset.view === "turniere") {
+            activeTournamentId = null;
+            renderTournamentsView();
+        }
         switchView(btn.dataset.view);
     });
 
-    // Dynamische Team-Navigation
     document.getElementById("team-nav-list").addEventListener("click", (e) => {
         const btn = e.target.closest(".nav-item");
         if (!btn) return;
         openTeamView(btn.dataset.team);
     });
 
-    // Admin: Neuen Benutzernamen hinzufügen + zufälliges Passwort generieren
     document.getElementById("add-player-form").addEventListener("submit", (e) => {
         e.preventDefault();
         if (currentUser?.role !== "admin") return;
@@ -310,9 +450,9 @@ function setupAppEvents() {
 
         renderTeamSidebar();
         renderAdminPlayerList();
+        renderTournamentsView();
     });
 
-    // Admin-Spielerliste Aktionen (Kopieren, Neues Passwort, Entfernen)
     document.getElementById("admin-player-list").addEventListener("click", (e) => {
         if (currentUser?.role !== "admin") return;
 
@@ -356,6 +496,7 @@ function setupAppEvents() {
 
             renderTeamSidebar();
             renderAdminPlayerList();
+            renderTournamentsView();
 
             if (currentView === "team" && activeTeamUsername === username) {
                 switchView("admin-panel");
@@ -363,7 +504,6 @@ function setupAppEvents() {
         }
     });
 
-    // Forum Chat Nachricht senden
     document.getElementById("chat-form").addEventListener("submit", (e) => {
         e.preventDefault();
         const input = document.getElementById("chat-input");
@@ -384,7 +524,6 @@ function setupAppEvents() {
         renderForumMessages();
     });
 
-    // Admin: News posten
     document.getElementById("news-form").addEventListener("submit", (e) => {
         e.preventDefault();
         if (currentUser?.role !== "admin") return;
@@ -406,24 +545,696 @@ function setupAppEvents() {
         bodyInput.value = "";
         renderNews();
     });
+}
 
+// ==================== TURNIERE & TURNIERBAUM ====================
+function getTournamentStatus(tournament) {
+    const state = getTournamentsState();
+    return state[tournament.id]?.status || tournament.defaultStatus;
+}
 
-    // Turnierübersicht: Zwischen laufenden, zukünftigen und vergangenen Turnieren wechseln
-    document.querySelector(".tournament-tabs")?.addEventListener("click", (e) => {
-        const tab = e.target.closest(".tournament-tab");
-        if (!tab) return;
+function getTournamentParticipants(tournamentId) {
+    const state = getTournamentsState();
+    return Array.isArray(state[tournamentId]?.participants) ? state[tournamentId].participants : [];
+}
 
-        const targetKey = tab.dataset.tournamentTab;
+function getTournamentMatches(tournamentId) {
+    const state = getTournamentsState();
+    return state[tournamentId]?.matches || {};
+}
 
-        document.querySelectorAll(".tournament-tab").forEach(btn => {
-            const isActive = btn === tab;
-            btn.classList.toggle("active", isActive);
-            btn.setAttribute("aria-selected", String(isActive));
+function getVrsRankingsMap() {
+    return window.HLTV_VRS_RANKINGS || {};
+}
+
+function getVrsEntriesForDate(date) {
+    const map = getVrsRankingsMap();
+    const list = map[date] || [];
+    const nameCounts = {};
+    return list.map((item, idx) => {
+        const name = String(item[0]);
+        const points = Number(item[1]) || 0;
+        const region = item[2] ? String(item[2]) : "";
+        nameCounts[name] = (nameCounts[name] || 0) + 1;
+        return {
+            uid: `vrs:${name}#${nameCounts[name]}`,
+            rank: idx + 1,
+            name,
+            points,
+            region
+        };
+    });
+}
+
+function getResolvedParticipant(uid, participants) {
+    if (!uid) return null;
+    const found = participants.find(p => p.uid === uid);
+    if (!found) return null;
+
+    if (found.type === "player") {
+        const livePlayer = getPlayers().find(p => p.username === found.username);
+        const liveName = livePlayer ? getPlayerTeamDisplayName(livePlayer) : found.name;
+        return {
+            ...found,
+            displayName: liveName,
+            icon: "🛡️",
+            badgeText: `Spieler (${found.username})`
+        };
+    }
+
+    return {
+        ...found,
+        displayName: found.name,
+        icon: "🏆",
+        badgeText: found.rank ? `VRS #${found.rank} (${found.points} Pkt)` : "VRS-Team"
+    };
+}
+
+function formatCategoryBadge(status) {
+    if (status === "laufend") return { label: "🔴 Aktuell laufend", cls: "t-badge-laufend" };
+    if (status === "zukuenftig") return { label: "🗓️ Zukünftig", cls: "t-badge-zukuenftig" };
+    return { label: "🏁 Vergangen", cls: "t-badge-vergangen" };
+}
+
+function buildMatchSlotMarkup(tournamentId, matchId, slotIndex, assignedUid, participants, isAdmin, preferredUids = []) {
+    const resolved = getResolvedParticipant(assignedUid, participants);
+    if (!isAdmin) {
+        if (!resolved) {
+            return `<div class="match-team-row tbd"><span>TBD</span><span>–</span></div>`;
+        }
+        return `<div class="match-team-row"><span>${resolved.icon} ${escapeHTML(resolved.displayName)}</span><span class="muted" style="font-size:.72rem;">${resolved.type === "player" ? "Spieler" : "VRS"}</span></div>`;
+    }
+
+    const prefSet = new Set(preferredUids.filter(Boolean));
+    const sorted = [...participants].sort((a, b) => {
+        const aPref = prefSet.has(a.uid) ? 0 : 1;
+        const bPref = prefSet.has(b.uid) ? 0 : 1;
+        if (aPref !== bPref) return aPref - bPref;
+        return 0;
+    });
+
+    const options = sorted.map(p => {
+        const info = getResolvedParticipant(p.uid, participants);
+        const prefix = prefSet.has(p.uid) ? "★ " : "";
+        return `<option value="${escapeHTML(p.uid)}" ${p.uid === assignedUid ? "selected" : ""}>${prefix}${info.icon} ${escapeHTML(info.displayName)}</option>`;
+    }).join("");
+
+    return `
+        <select class="match-team-select" data-action="set-match-slot" data-tournament-id="${escapeHTML(tournamentId)}" data-match-id="${escapeHTML(matchId)}" data-slot="${slotIndex}" aria-label="${escapeHTML(matchId)} Team ${slotIndex + 1}">
+            <option value="">-- TBD (Offen) --</option>
+            ${options}
+        </select>
+    `;
+}
+
+function renderMatchCard(tournamentId, match, dateLabel, dayLabel, participants, matchesMap, isAdmin, preferredUids = []) {
+    const slots = matchesMap[match.id] || [null, null];
+    return `
+        <div class="match-card">
+            <div class="match-card-header">
+                <strong>${escapeHTML(match.label)}</strong>
+                <span class="match-date-pill">${escapeHTML(dayLabel)} · ${escapeHTML(dateLabel)}</span>
+            </div>
+            ${buildMatchSlotMarkup(tournamentId, match.id, 0, slots[0], participants, isAdmin, preferredUids)}
+            ${buildMatchSlotMarkup(tournamentId, match.id, 1, slots[1], participants, isAdmin, preferredUids)}
+        </div>
+    `;
+}
+
+function renderBracketTab(tournament, participants, matchesMap, isAdmin) {
+    const r32Round = tournament.rounds.find(r => r.id === "r32");
+    const r16Round = tournament.rounds.find(r => r.id === "r16");
+
+    const r32Lookup = {};
+    r32Round.days.forEach(day => {
+        day.matches.forEach(m => {
+            r32Lookup[m.id] = { match: m, dateLabel: day.dateLabel, dayLabel: day.dayLabel };
         });
+    });
 
-        document.querySelectorAll(".tournament-panel").forEach(panel => {
-            panel.classList.toggle("active", panel.id === `tournament-panel-${targetKey}`);
+    const r16All = [];
+    r16Round.days.forEach(day => {
+        day.matches.forEach(m => {
+            r16All.push({ match: m, dateLabel: day.dateLabel, dayLabel: day.dayLabel });
         });
+    });
+
+    const pairsHtml = r16All.map((r16Item, index) => {
+        const [leftId, rightId] = r16Item.match.fromR32;
+        const leftR32 = r32Lookup[leftId];
+        const rightR32 = r32Lookup[rightId];
+
+        const leftSlots = matchesMap[leftId] || [null, null];
+        const rightSlots = matchesMap[rightId] || [null, null];
+        const feedingUids = [...leftSlots, ...rightSlots].filter(Boolean);
+
+        return `
+            <div class="bracket-pair">
+                <div class="bracket-pair-r32">
+                    ${renderMatchCard(tournament.id, leftR32.match, leftR32.dateLabel, leftR32.dayLabel, participants, matchesMap, isAdmin)}
+                    ${renderMatchCard(tournament.id, rightR32.match, rightR32.dateLabel, rightR32.dayLabel, participants, matchesMap, isAdmin)}
+                </div>
+                <div class="bracket-connector" aria-hidden="true"></div>
+                <div class="bracket-pair-r16">
+                    ${renderMatchCard(tournament.id, r16Item.match, r16Item.dateLabel, r16Item.dayLabel, participants, matchesMap, isAdmin, feedingUids)}
+                </div>
+                <div class="bracket-lan-cell">
+                    <div class="lan-qual-pill">🏆 Top 8 Platz #${index + 1}<br><span style="font-weight:400; color:#fde68a;">→ LAN Finals Kopenhagen</span></div>
+                </div>
+            </div>
+        `;
+    }).join("");
+
+    const adminControls = isAdmin ? `
+        <div class="bracket-toolbar">
+            <span class="muted">Admin-Steuerung: Teams können direkt im Turnierbaum pro Match ausgewählt oder automatisch befüllt werden.</span>
+            <div class="news-form-actions" style="margin-top:0;">
+                <button type="button" class="btn btn-secondary btn-small" data-action="autofill-r32" data-tournament-id="${escapeHTML(tournament.id)}" ${participants.length === 0 ? "disabled" : ""}>🎲 Zugewiesene Teams in R32 setzen</button>
+                <button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${escapeHTML(tournament.id)}">🧹 Matches leeren</button>
+            </div>
+        </div>
+    ` : "";
+
+    return `
+        ${adminControls}
+        <p class="muted-text" style="margin-bottom:10px;">
+            Klicke oben auf <strong>Round of 32</strong> oder <strong>Round of 16</strong>, um die einzelnen Spieltage übersichtlich im Detail zu sehen.
+        </p>
+        <div class="bracket-scroll">
+            <div class="bracket-board">
+                <div class="bracket-col-headers">
+                    <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="r32">
+                        ⚔️ Round of 32 (16 Matches)
+                        <small>14.–17. Januar 2025 · 4 Matches pro Tag</small>
+                    </div>
+                    <div></div>
+                    <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="r16">
+                        🔥 Round of 16 (8 Matches)
+                        <small>18.–19. Januar 2025 · 4 Matches pro Tag</small>
+                    </div>
+                    <div class="bracket-col-head">
+                        ✈️ LAN Finals
+                        <small>23.–26. Jan · Kopenhagen</small>
+                    </div>
+                </div>
+                ${pairsHtml}
+            </div>
+        </div>
+    `;
+}
+
+function renderRoundTab(tournament, round, participants, matchesMap, isAdmin) {
+    const daysHtml = round.days.map(day => `
+        <div class="round-day-card">
+            <div class="round-day-header">
+                <strong>${escapeHTML(day.dayLabel)} · ${escapeHTML(day.dateLabel)}</strong>
+                <span>${day.matches.length} Matches</span>
+            </div>
+            ${day.matches.map(m => {
+                let preferred = [];
+                if (Array.isArray(m.fromR32)) {
+                    const sA = matchesMap[m.fromR32[0]] || [];
+                    const sB = matchesMap[m.fromR32[1]] || [];
+                    preferred = [...sA, ...sB].filter(Boolean);
+                }
+                return renderMatchCard(tournament.id, m, day.dateLabel, day.dayLabel, participants, matchesMap, isAdmin, preferred);
+            }).join("")}
+        </div>
+    `).join("");
+
+    return `
+        <div class="bracket-toolbar">
+            <div>
+                <h3 style="margin-bottom:3px;">${escapeHTML(round.name)}</h3>
+                <p class="muted">${escapeHTML(round.subtitle)}</p>
+            </div>
+            ${isAdmin && round.id === "r32" ? `
+                <div class="news-form-actions" style="margin-top:0;">
+                    <button type="button" class="btn btn-secondary btn-small" data-action="autofill-r32" data-tournament-id="${escapeHTML(tournament.id)}" ${participants.length === 0 ? "disabled" : ""}>🎲 Teilnehmer in R32 setzen</button>
+                    <button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${escapeHTML(tournament.id)}">🧹 R32/R16 leeren</button>
+                </div>
+            ` : ""}
+        </div>
+        <div class="round-days-grid">${daysHtml}</div>
+    `;
+}
+
+function buildVrsSelectOptions(vrsDate, searchQuery, existingUids) {
+    const entries = getVrsEntriesForDate(vrsDate);
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = q ? entries.filter(e => e.name.toLowerCase().includes(q)) : entries;
+
+    if (filtered.length === 0) {
+        return `<option value="">Keine passenden VRS-Teams gefunden</option>`;
+    }
+
+    return filtered.map(e => {
+        const alreadyIn = existingUids.has(e.uid);
+        const regText = e.region ? ` · ${e.region}` : "";
+        return `<option value="${escapeHTML(e.uid)}" ${alreadyIn ? "disabled" : ""}>#${e.rank} ${escapeHTML(e.name)} (${e.points} Pkt${escapeHTML(regText)})${alreadyIn ? " ✓" : ""}</option>`;
+    }).join("");
+}
+
+function renderParticipantsTab(tournament, participants, isAdmin) {
+    const existingUids = new Set(participants.map(p => p.uid));
+    const isFull = participants.length >= tournament.maxTeams;
+
+    let adminPanel = "";
+    if (isAdmin) {
+        const allPlayers = getPlayers();
+        const playerOptions = allPlayers.length
+            ? allPlayers.map(p => {
+                const uid = `player:${p.username}`;
+                const alreadyIn = existingUids.has(uid);
+                const tName = getPlayerTeamDisplayName(p);
+                return `<option value="${escapeHTML(p.username)}" ${alreadyIn ? "disabled" : ""}>🛡️ ${escapeHTML(tName)} (${escapeHTML(p.username)})${alreadyIn ? " ✓" : ""}</option>`;
+            }).join("")
+            : `<option value="">Keine Spieler erstellt</option>`;
+
+        const vrsMap = getVrsRankingsMap();
+        const vrsDates = Object.keys(vrsMap).sort();
+        const savedRankingDate = localStorage.getItem("hltv_game_ranking_date");
+        if (!selectedVrsPickerDate || !vrsMap[selectedVrsPickerDate]) {
+            selectedVrsPickerDate = (savedRankingDate && vrsMap[savedRankingDate]) ? savedRankingDate : (vrsDates[0] || "");
+        }
+
+        const vrsDateOptions = vrsDates.map(d =>
+            `<option value="${escapeHTML(d)}" ${d === selectedVrsPickerDate ? "selected" : ""}>${escapeHTML(d)}</option>`
+        ).join("");
+
+        const vrsOptions = selectedVrsPickerDate
+            ? buildVrsSelectOptions(selectedVrsPickerDate, vrsSearchTerm, existingUids)
+            : `<option value="">Keine VRS-Daten geladen</option>`;
+
+        adminPanel = `
+            <div class="tournament-admin-box">
+                <div class="tournament-card-top">
+                    <h3>🛡️ Admin: Teams dem Turnier zuweisen (${participants.length} / ${tournament.maxTeams})</h3>
+                    <div class="news-form-actions" style="margin-top:0;">
+                        <button type="button" class="btn btn-secondary btn-small" data-action="fill-top-vrs" data-tournament-id="${escapeHTML(tournament.id)}" ${isFull || !selectedVrsPickerDate ? "disabled" : ""}>⚡ Freie Plätze mit VRS-Top-Teams auffüllen</button>
+                        <button type="button" class="btn btn-danger btn-small" data-action="clear-participants" data-tournament-id="${escapeHTML(tournament.id)}" ${participants.length === 0 ? "disabled" : ""}>Alle entfernen</button>
+                    </div>
+                </div>
+                <div class="assign-grid">
+                    <div class="assign-card">
+                        <label for="tournament-player-select">Spieler-Team zuweisen</label>
+                        <div class="assign-row">
+                            <select id="tournament-player-select">${playerOptions}</select>
+                            <button type="button" class="btn btn-primary btn-small" data-action="add-player-team" data-tournament-id="${escapeHTML(tournament.id)}" ${isFull || allPlayers.length === 0 ? "disabled" : ""}>Hinzufügen</button>
+                        </div>
+                    </div>
+                    <div class="assign-card">
+                        <label for="tournament-vrs-select">VRS-Ranked Team zuweisen</label>
+                        <div class="assign-row">
+                            <select id="tournament-vrs-date" style="max-width:135px;" title="VRS-Datum">${vrsDateOptions}</select>
+                            <input type="text" id="tournament-vrs-search" placeholder="Team suchen..." value="${escapeHTML(vrsSearchTerm)}">
+                        </div>
+                        <div class="assign-row">
+                            <select id="tournament-vrs-select">${vrsOptions}</select>
+                            <button type="button" class="btn btn-accent btn-small" data-action="add-vrs-team" data-tournament-id="${escapeHTML(tournament.id)}" ${isFull || !selectedVrsPickerDate ? "disabled" : ""}>Hinzufügen</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    const listHtml = participants.length > 0
+        ? `<div class="participants-grid">${participants.map((p, index) => {
+            const info = getResolvedParticipant(p.uid, participants);
+            return `
+                <div class="participant-item">
+                    <div class="participant-info">
+                        <strong>#${index + 1} ${info.icon} ${escapeHTML(info.displayName)}</strong>
+                        <small>${escapeHTML(info.badgeText)}${p.region ? ` · ${escapeHTML(p.region)}` : ""}</small>
+                    </div>
+                    ${isAdmin ? `<button type="button" class="btn btn-danger btn-small" data-action="remove-participant" data-tournament-id="${escapeHTML(tournament.id)}" data-uid="${escapeHTML(p.uid)}" title="Entfernen">×</button>` : ""}
+                </div>
+            `;
+        }).join("")}</div>`
+        : `<div class="placeholder-box"><span>Noch keine Teams für dieses Turnier eingetragen (0 / ${tournament.maxTeams}).${isAdmin ? " Nutze oben die Admin-Zuweisung, um Spieler- oder VRS-Teams hinzuzufügen." : ""}</span></div>`;
+
+    return `${adminPanel}${listHtml}`;
+}
+
+function renderTournamentDetail(tournament) {
+    const isAdmin = currentUser?.role === "admin";
+    const status = getTournamentStatus(tournament);
+    const badge = formatCategoryBadge(status);
+    const participants = getTournamentParticipants(tournament.id);
+    const matchesMap = getTournamentMatches(tournament.id);
+
+    const statusSelectHtml = isAdmin ? `
+        <div class="tournament-admin-status">
+            <label for="tournament-status-select">Status (Admin):</label>
+            <select id="tournament-status-select" data-tournament-id="${escapeHTML(tournament.id)}">
+                <option value="zukuenftig" ${status === "zukuenftig" ? "selected" : ""}>🗓️ Zukünftig</option>
+                <option value="laufend" ${status === "laufend" ? "selected" : ""}>🔴 Aktuell laufend</option>
+                <option value="vergangen" ${status === "vergangen" ? "selected" : ""}>🏁 Vergangen</option>
+            </select>
+        </div>
+    ` : "";
+
+    const noticesHtml = tournament.notices.map(n => `
+        <div class="tournament-notice ${escapeHTML(n.type)}">
+            <strong>${n.icon} ${escapeHTML(n.title)}</strong>
+            <span>${escapeHTML(n.text)}</span>
+        </div>
+    `).join("");
+
+    let subContent = "";
+    if (activeTournamentSubTab === "bracket") {
+        subContent = renderBracketTab(tournament, participants, matchesMap, isAdmin);
+    } else if (activeTournamentSubTab === "r32") {
+        subContent = renderRoundTab(tournament, tournament.rounds.find(r => r.id === "r32"), participants, matchesMap, isAdmin);
+    } else if (activeTournamentSubTab === "r16") {
+        subContent = renderRoundTab(tournament, tournament.rounds.find(r => r.id === "r16"), participants, matchesMap, isAdmin);
+    } else {
+        subContent = renderParticipantsTab(tournament, participants, isAdmin);
+    }
+
+    return `
+        <div class="card">
+            <div class="tournament-detail-topbar">
+                <button type="button" class="btn btn-secondary btn-small" data-action="back-to-overview">← Zurück zur Turnierübersicht</button>
+                <div class="row" style="display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
+                    <span class="t-badge ${badge.cls}">${badge.label}</span>
+                    ${statusSelectHtml}
+                </div>
+            </div>
+
+            <h2>🏅 ${escapeHTML(tournament.name)}</h2>
+            <p class="muted-text">${escapeHTML(tournament.formatSummary)}</p>
+
+            <div class="tournament-info-grid">
+                <div class="stat-box"><span class="stat-label">Online-Phase</span><span class="stat-value">${escapeHTML(tournament.onlineDates)}</span></div>
+                <div class="stat-box"><span class="stat-label">Online-Standort</span><span class="stat-value">${escapeHTML(tournament.onlineRegion)}</span></div>
+                <div class="stat-box"><span class="stat-label">Anreise bei Top 8</span><span class="stat-value">${escapeHTML(tournament.travelWindow)}</span></div>
+                <div class="stat-box"><span class="stat-label">LAN Finals</span><span class="stat-value">${escapeHTML(tournament.lanDates)} · ${escapeHTML(tournament.lanLocation)}</span></div>
+                <div class="stat-box"><span class="stat-label">Teilnehmer</span><span class="stat-value">${participants.length} / ${tournament.maxTeams} Teams</span></div>
+            </div>
+
+            <div class="tournament-notices">${noticesHtml}</div>
+
+            <div class="tournament-subtabs" role="tablist">
+                <button type="button" class="tournament-subtab ${activeTournamentSubTab === "bracket" ? "active" : ""}" data-action="switch-subtab" data-subtab="bracket">🌳 Turnierbaum</button>
+                <button type="button" class="tournament-subtab ${activeTournamentSubTab === "r32" ? "active" : ""}" data-action="switch-subtab" data-subtab="r32">⚔️ Round of 32</button>
+                <button type="button" class="tournament-subtab ${activeTournamentSubTab === "r16" ? "active" : ""}" data-action="switch-subtab" data-subtab="r16">🔥 Round of 16</button>
+                <button type="button" class="tournament-subtab ${activeTournamentSubTab === "participants" ? "active" : ""}" data-action="switch-subtab" data-subtab="participants">👥 Teilnehmer (${participants.length}/${tournament.maxTeams})</button>
+            </div>
+
+            <div>${subContent}</div>
+        </div>
+    `;
+}
+
+function renderTournamentOverview() {
+    const counts = { laufend: 0, zukuenftig: 0, vergangen: 0 };
+    const categorized = { laufend: [], zukuenftig: [], vergangen: [] };
+
+    TOURNAMENTS_DATA.forEach(t => {
+        const st = getTournamentStatus(t);
+        if (counts[st] !== undefined) {
+            counts[st]++;
+            categorized[st].push(t);
+        }
+    });
+
+    const activeList = categorized[activeTournamentCategory] || [];
+    const emptyLabels = {
+        laufend: "🔴 Aktuell laufen keine Turniere.",
+        zukuenftig: "🗓️ Keine zukünftigen Turniere in dieser Kategorie.",
+        vergangen: "🏁 Noch keine vergangenen Turniere vorhanden."
+    };
+
+    const listHtml = activeList.length > 0
+        ? `<div class="tournament-list">${activeList.map(t => {
+            const st = getTournamentStatus(t);
+            const badge = formatCategoryBadge(st);
+            const participants = getTournamentParticipants(t.id);
+            return `
+                <button type="button" class="tournament-card" data-action="open-tournament" data-tournament-id="${escapeHTML(t.id)}">
+                    <div class="tournament-card-top">
+                        <span class="tournament-card-title">🏅 ${escapeHTML(t.name)}</span>
+                        <span class="t-badge ${badge.cls}">${badge.label}</span>
+                    </div>
+                    <div class="tournament-card-meta">
+                        <span>📅 Online: ${escapeHTML(t.onlineDates)} (${escapeHTML(t.onlineRegion)})</span>
+                        <span>✈️ LAN Finals: ${escapeHTML(t.lanDates)} (${escapeHTML(t.lanLocation)})</span>
+                        <span>👥 ${participants.length} / ${t.maxTeams} Teams</span>
+                        <span>🌍 ${escapeHTML(t.inviteSummary)}</span>
+                    </div>
+                    <div class="tournament-card-foot">
+                        <span>${escapeHTML(t.formatSummary)}</span>
+                        <span>Turnierbaum &amp; Details öffnen →</span>
+                    </div>
+                </button>
+            `;
+        }).join("")}</div>`
+        : `<div class="placeholder-box"><span>${emptyLabels[activeTournamentCategory]}</span></div>`;
+
+    return `
+        <div class="card">
+            <h2>Turnierübersicht</h2>
+            <p class="muted-text">Wähle eine Kategorie aus, um aktuell laufende, zukünftige oder vergangene Turniere anzuzeigen.</p>
+            <div class="tournament-tabs" role="tablist" aria-label="Turnier-Kategorien">
+                <button type="button" class="tournament-tab ${activeTournamentCategory === "laufend" ? "active" : ""}" data-tournament-tab="laufend" role="tab" aria-selected="${activeTournamentCategory === "laufend"}">
+                    🔴 Aktuell laufend <span class="tournament-tab-count">${counts.laufend}</span>
+                </button>
+                <button type="button" class="tournament-tab ${activeTournamentCategory === "zukuenftig" ? "active" : ""}" data-tournament-tab="zukuenftig" role="tab" aria-selected="${activeTournamentCategory === "zukuenftig"}">
+                    🗓️ Zukünftig <span class="tournament-tab-count">${counts.zukuenftig}</span>
+                </button>
+                <button type="button" class="tournament-tab ${activeTournamentCategory === "vergangen" ? "active" : ""}" data-tournament-tab="vergangen" role="tab" aria-selected="${activeTournamentCategory === "vergangen"}">
+                    🏁 Vergangen <span class="tournament-tab-count">${counts.vergangen}</span>
+                </button>
+            </div>
+            <div>${listHtml}</div>
+        </div>
+    `;
+}
+
+function renderTournamentsView() {
+    const root = document.getElementById("tournaments-root");
+    if (!root) return;
+
+    if (activeTournamentId) {
+        const tournament = TOURNAMENTS_DATA.find(t => t.id === activeTournamentId);
+        if (tournament) {
+            root.innerHTML = renderTournamentDetail(tournament);
+            if (currentView === "turniere") {
+                document.getElementById("view-title").textContent = tournament.name;
+            }
+            return;
+        }
+        activeTournamentId = null;
+    }
+
+    root.innerHTML = renderTournamentOverview();
+    if (currentView === "turniere") {
+        document.getElementById("view-title").textContent = "Turniere";
+    }
+}
+
+function setupTournamentEvents() {
+    const root = document.getElementById("tournaments-root");
+    if (!root) return;
+
+    root.addEventListener("click", (e) => {
+        const catTab = e.target.closest("[data-tournament-tab]");
+        if (catTab) {
+            activeTournamentCategory = catTab.dataset.tournamentTab;
+            renderTournamentsView();
+            return;
+        }
+
+        const actionEl = e.target.closest("[data-action]");
+        if (!actionEl) return;
+        const action = actionEl.dataset.action;
+
+        if (action === "open-tournament") {
+            activeTournamentId = actionEl.dataset.tournamentId;
+            activeTournamentSubTab = "bracket";
+            renderTournamentsView();
+            return;
+        }
+
+        if (action === "back-to-overview") {
+            activeTournamentId = null;
+            renderTournamentsView();
+            return;
+        }
+
+        if (action === "switch-subtab") {
+            activeTournamentSubTab = actionEl.dataset.subtab;
+            renderTournamentsView();
+            return;
+        }
+
+        // Ab hier nur Admin-Aktionen
+        if (currentUser?.role !== "admin") return;
+        const tId = actionEl.dataset.tournamentId;
+        const tournament = TOURNAMENTS_DATA.find(t => t.id === tId);
+        if (!tournament) return;
+
+        const state = getTournamentsState();
+        if (!state[tId]) state[tId] = { participants: [], matches: {} };
+        if (!Array.isArray(state[tId].participants)) state[tId].participants = [];
+        if (!state[tId].matches) state[tId].matches = {};
+
+        if (action === "add-player-team") {
+            const select = document.getElementById("tournament-player-select");
+            const username = select?.value;
+            if (!username || state[tId].participants.length >= tournament.maxTeams) return;
+            const player = getPlayers().find(p => p.username === username);
+            if (!player) return;
+            const uid = `player:${player.username}`;
+            if (state[tId].participants.some(p => p.uid === uid)) return;
+
+            state[tId].participants.push({
+                uid,
+                type: "player",
+                username: player.username,
+                name: getPlayerTeamDisplayName(player)
+            });
+            saveTournamentsState(state);
+            renderTournamentsView();
+            return;
+        }
+
+        if (action === "add-vrs-team") {
+            const select = document.getElementById("tournament-vrs-select");
+            const uid = select?.value;
+            if (!uid || !selectedVrsPickerDate || state[tId].participants.length >= tournament.maxTeams) return;
+            if (state[tId].participants.some(p => p.uid === uid)) return;
+
+            const vrsEntry = getVrsEntriesForDate(selectedVrsPickerDate).find(entry => entry.uid === uid);
+            if (!vrsEntry) return;
+
+            state[tId].participants.push({
+                uid: vrsEntry.uid,
+                type: "vrs",
+                name: vrsEntry.name,
+                points: vrsEntry.points,
+                rank: vrsEntry.rank,
+                region: vrsEntry.region
+            });
+            saveTournamentsState(state);
+            renderTournamentsView();
+            return;
+        }
+
+        if (action === "fill-top-vrs") {
+            if (!selectedVrsPickerDate) return;
+            const entries = getVrsEntriesForDate(selectedVrsPickerDate);
+            const existing = new Set(state[tId].participants.map(p => p.uid));
+            for (const entry of entries) {
+                if (state[tId].participants.length >= tournament.maxTeams) break;
+                if (existing.has(entry.uid)) continue;
+                state[tId].participants.push({
+                    uid: entry.uid,
+                    type: "vrs",
+                    name: entry.name,
+                    points: entry.points,
+                    rank: entry.rank,
+                    region: entry.region
+                });
+                existing.add(entry.uid);
+            }
+            saveTournamentsState(state);
+            renderTournamentsView();
+            return;
+        }
+
+        if (action === "remove-participant") {
+            const uid = actionEl.dataset.uid;
+            state[tId].participants = state[tId].participants.filter(p => p.uid !== uid);
+            for (const mId of Object.keys(state[tId].matches)) {
+                state[tId].matches[mId] = state[tId].matches[mId].map(slot => (slot === uid ? null : slot));
+            }
+            saveTournamentsState(state);
+            renderTournamentsView();
+            return;
+        }
+
+        if (action === "clear-participants") {
+            if (!confirm("Wirklich alle zugewiesenen Teams aus diesem Turnier entfernen?")) return;
+            state[tId].participants = [];
+            state[tId].matches = {};
+            saveTournamentsState(state);
+            renderTournamentsView();
+            return;
+        }
+
+        if (action === "autofill-r32") {
+            const list = state[tId].participants;
+            const r32 = tournament.rounds.find(r => r.id === "r32");
+            let idx = 0;
+            r32.days.forEach(day => {
+                day.matches.forEach(m => {
+                    state[tId].matches[m.id] = [
+                        list[idx]?.uid || null,
+                        list[idx + 1]?.uid || null
+                    ];
+                    idx += 2;
+                });
+            });
+            saveTournamentsState(state);
+            renderTournamentsView();
+            return;
+        }
+
+        if (action === "clear-matches") {
+            state[tId].matches = {};
+            saveTournamentsState(state);
+            renderTournamentsView();
+        }
+    });
+
+    root.addEventListener("change", (e) => {
+        if (currentUser?.role !== "admin") return;
+
+        if (e.target.id === "tournament-vrs-date") {
+            selectedVrsPickerDate = e.target.value;
+            renderTournamentsView();
+            return;
+        }
+
+        if (e.target.id === "tournament-status-select") {
+            const tId = e.target.dataset.tournamentId;
+            const newStatus = e.target.value;
+            const state = getTournamentsState();
+            if (!state[tId]) state[tId] = { participants: [], matches: {} };
+            state[tId].status = newStatus;
+            activeTournamentCategory = newStatus;
+            saveTournamentsState(state);
+            renderTournamentsView();
+            return;
+        }
+
+        if (e.target.dataset.action === "set-match-slot") {
+            const tId = e.target.dataset.tournamentId;
+            const matchId = e.target.dataset.matchId;
+            const slotIdx = Number(e.target.dataset.slot);
+            const val = e.target.value || null;
+
+            const state = getTournamentsState();
+            if (!state[tId]) state[tId] = { participants: [], matches: {} };
+            if (!state[tId].matches) state[tId].matches = {};
+            if (!Array.isArray(state[tId].matches[matchId])) state[tId].matches[matchId] = [null, null];
+
+            state[tId].matches[matchId][slotIdx] = val;
+            saveTournamentsState(state);
+            renderTournamentsView();
+        }
+    });
+
+    root.addEventListener("input", (e) => {
+        if (e.target.id !== "tournament-vrs-search") return;
+        vrsSearchTerm = e.target.value;
+        const select = document.getElementById("tournament-vrs-select");
+        if (!select || !activeTournamentId || !selectedVrsPickerDate) return;
+        const existingUids = new Set(getTournamentParticipants(activeTournamentId).map(p => p.uid));
+        select.innerHTML = buildVrsSelectOptions(selectedVrsPickerDate, vrsSearchTerm, existingUids);
     });
 }
 
@@ -455,7 +1266,6 @@ function setupPasswordModalEvents() {
         const oldPw = document.getElementById("old-password").value;
         const newPw = document.getElementById("new-password").value;
         const confirmPw = document.getElementById("confirm-password").value;
-        const feedback = document.getElementById("password-feedback");
 
         if (newPw.length < 4) {
             showPasswordFeedback("Das neue Passwort muss mindestens 4 Zeichen lang sein.", "error");
@@ -538,6 +1348,9 @@ function switchView(viewName) {
 
     if (viewName === "forum") {
         scrollChatToBottom();
+    }
+    if (viewName === "turniere") {
+        renderTournamentsView();
     }
 }
 
