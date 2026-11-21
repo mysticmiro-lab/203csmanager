@@ -1071,6 +1071,22 @@ export function createTournamentsModule(deps) {
         `;
     }
 
+    function getVrsEntriesForDate(date) {
+        const list = getVrsRankingsMap()[date] || [];
+        const counts = {};
+        return list.map((item, idx) => {
+            const name = String(item[0]);
+            counts[name] = (counts[name] || 0) + 1;
+            return {
+                uid: `vrs:${name}#${counts[name]}`,
+                rank: idx + 1,
+                name,
+                points: Number(item[1]) || 0,
+                region: item[2] ? String(item[2]) : ""
+            };
+        });
+    }
+    
     function buildVrsSelectOptions(vrsDate, q, existing) {
         const list = getVrsEntriesForDate(vrsDate);
         const low = q.trim().toLowerCase();
