@@ -1071,6 +1071,17 @@ export function createTournamentsModule(deps) {
         `;
     }
 
+    function getResolvedParticipant(uid, participants) {
+        if (!uid) return null;
+        const found = participants.find(p => p.uid === uid);
+        if (!found) return null;
+        if (found.type === "player") {
+            const live = getPlayers().find(p => p.uid === found.playerUid || p.username === found.username);
+            return { ...found, displayName: live ? getTeamName(live) : found.name, icon: "🛡️", badgeText: `Spieler (${found.username})` };
+        }
+        return { ...found, displayName: found.name, icon: "🏆", badgeText: found.rank ? `VRS #${found.rank} (${found.points} Pkt)` : "VRS-Team" };
+    }
+    
     function getVrsEntriesForDate(date) {
         const list = getVrsRankingsMap()[date] || [];
         const counts = {};
