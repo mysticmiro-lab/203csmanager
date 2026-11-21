@@ -777,6 +777,24 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent-blue); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
 .password-security-warning { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--accent-orange); border-radius: 6px; background: rgba(245,158,11,.12); color: #fcd34d; font-size: .82rem; }
 
+/* Gruppenphasen & Swiss-Tabellen */
+.stage-group-block {
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border-color);
+}
+.stage-group-block:last-child { margin-bottom: 0; border-bottom: 0; }
+.stage-table { margin-top: 8px; }
+.row-qualified td:first-child { border-left: 3px solid var(--success); }
+.row-qualified { background: rgba(16,185,129,.08); }
+.row-eliminated { opacity: .6; }
+.te-group-box {
+    padding: 12px;
+    border: 1px solid rgba(59,130,246,.4);
+    border-radius: 8px;
+    background: rgba(59,130,246,.07);
+}
+
 @media (max-width: 760px) {
     .app-container { flex-direction: column; }
     .sidebar { width: 100%; min-height: auto; flex: none; border-right: 0; border-bottom: 1px solid var(--border-color); }
