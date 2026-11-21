@@ -406,6 +406,25 @@ function setupAppEvents() {
         bodyInput.value = "";
         renderNews();
     });
+
+
+    // Turnierübersicht: Zwischen laufenden, zukünftigen und vergangenen Turnieren wechseln
+    document.querySelector(".tournament-tabs")?.addEventListener("click", (e) => {
+        const tab = e.target.closest(".tournament-tab");
+        if (!tab) return;
+
+        const targetKey = tab.dataset.tournamentTab;
+
+        document.querySelectorAll(".tournament-tab").forEach(btn => {
+            const isActive = btn === tab;
+            btn.classList.toggle("active", isActive);
+            btn.setAttribute("aria-selected", String(isActive));
+        });
+
+        document.querySelectorAll(".tournament-panel").forEach(panel => {
+            panel.classList.toggle("active", panel.id === `tournament-panel-${targetKey}`);
+        });
+    });
 }
 
 // ==================== PASSWORT ÄNDERN (MODAL) ====================
