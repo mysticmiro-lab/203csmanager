@@ -40,6 +40,12 @@ export function createTournamentsModule(deps) {
     const getTournamentById = (id) => getTournamentsCache().find(t => t.id === id) || null;
     const isAdmin = () => getCurrentUser()?.role === "admin";
 
+    function formatCategoryBadge(status) {
+        if (status === "laufend") return { label: "🔴 Aktuell laufend", cls: "t-badge-laufend" };
+        if (status === "zukuenftig") return { label: "🗓️ Zukünftig", cls: "t-badge-zukuenftig" };
+        return { label: "🏁 Vergangen", cls: "t-badge-vergangen" };
+    }
+
     // ==================== GENERATOREN FÜR ALLE STUFEN ====================
     function chunkIntoDays(matches, startDate, dayOffset, matchesPerDay, labelPrefix = "Tag") {
         const perDay = Math.max(1, Number(matchesPerDay) || 4);
