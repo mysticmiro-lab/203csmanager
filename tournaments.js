@@ -1311,15 +1311,27 @@ export function createTournamentsModule(deps) {
     }
 
     function updateModularEditorVisibility() {
-        const hasS1 = document.getElementById("te-enable-stage1")?.checked;
-        const hasPI = document.getElementById("te-enable-playin")?.checked;
-        const hasPO = document.getElementById("te-enable-playoffs")?.checked;
+        const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val !== undefined && val !== null ? String(val) : "";
+    };
+    const setCheck = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = Boolean(val);
+    };
+    const getVal = (id, fallback = "") => document.getElementById(id)?.value ?? fallback;
+    const getCheck = (id) => Boolean(document.getElementById(id)?.checked);
+
+    function updateModularEditorVisibility() {
+        const hasS1 = getCheck("te-enable-stage1");
+        const hasPI = getCheck("te-enable-playin");
+        const hasPO = getCheck("te-enable-playoffs");
 
         document.getElementById("te-stage1-box")?.classList.toggle("hidden", !hasS1);
         document.getElementById("te-playin-box")?.classList.toggle("hidden", !hasPI);
         document.getElementById("te-playoffs-box")?.classList.toggle("hidden", !hasPO);
 
-        const s1Type = document.getElementById("te-stage1-type")?.value || "swiss";
+        const s1Type = getVal("te-stage1-type", "swiss");
         document.getElementById("te-group-advance-wrap")?.classList.toggle("hidden", s1Type === "swiss");
     }
 
@@ -1327,55 +1339,56 @@ export function createTournamentsModule(deps) {
         const modal = document.getElementById("tournament-editor-modal");
         if (!modal) return;
         const form = document.getElementById("te-form");
-        form.reset();
+        form?.reset();
 
         const editId = existing && !isDuplicate ? existing.id : "";
         populateTournamentEditorLinks(editId);
-        document.getElementById("te-modal-title").textContent = existing ? (isDuplicate ? "Turnier duplizieren" : "Turnier bearbeiten") : "Neues Turnier erstellen (Baukasten)";
-        document.getElementById("te-id").value = editId;
+        const titleEl = document.getElementById("te-modal-title");
+        if (titleEl) titleEl.textContent = existing ? (isDuplicate ? "Turnier duplizieren" : "Turnier bearbeiten") : "Neues Turnier erstellen (Baukasten)";
+        setVal("te-id", editId);
 
         if (existing) {
-            document.getElementById("te-name").value = isDuplicate ? `${existing.name} (Kopie)` : existing.name;
-            document.getElementById("te-status").value = existing.status || "zukuenftig";
-            document.getElementById("te-start-date").value = existing.startDate || "2025-02-01";
-            document.getElementById("te-matches-per-day").value = String(existing.matchesPerDay || 4);
-            document.getElementById("te-online-dates").value = existing.onlineDates || "";
-            document.getElementById("te-online-region").value = existing.onlineRegion || "";
-            document.getElementById("te-default-format").value = existing.defaultFormat || "BO3";
-            document.getElementById("te-decider-format").value = existing.deciderFormat || "BO3";
-            document.getElementById("te-final-format").value = existing.finalFormat || "BO5";
-            document.getElementById("te-invite-summary").value = existing.inviteSummary || "";
-            document.getElementById("te-lan-dates").value = existing.lanDates || "";
-            document.getElementById("te-lan-location").value = existing.lanLocation || "";
-            document.getElementById("te-travel-window").value = existing.travelWindow || "";
-            document.getElementById("te-predecessor-id").value = existing.qualifiedFrom?.tournamentId || "";
-            document.getElementById("te-next-id").value = existing.nextTournamentId || "";
-            document.getElementById("te-prize-total").value = existing.prizePoolTotal || "";
+            setVal("te-name", isDuplicate ? `${existing.name} (Kopie)` : existing.name);
+            setVal("te-status", existing.status || "zukuenftig");
+            setVal("te-start-date", existing.startDate || "2025-02-01");
+            setVal("te-matches-per-day", existing.matchesPerDay || 4);
+            setVal("te-online-dates", existing.onlineDates || "");
+            setVal("te-online-region", existing.onlineRegion || "");
+            setVal("te-default-format", existing.defaultFormat || "BO3");
+            setVal("te-decider-format", existing.deciderFormat || "BO3");
+            setVal("te-final-format", existing.finalFormat || "BO5");
+            setVal("te-invite-summary", existing.inviteSummary || "");
+            setVal("te-lan-dates", existing.lanDates || "");
+            setVal("te-lan-location", existing.lanLocation || "");
+            setVal("te-travel-window", existing.travelWindow || "");
+            setVal("te-predecessor-id", existing.qualifiedFrom?.tournamentId || "");
+            setVal("te-next-id", existing.nextTournamentId || "");
+            setVal("te-prize-total", existing.prizePoolTotal || "");
 
-            document.getElementById("te-enable-stage1").checked = Boolean(existing.hasStage1 ?? existing.swissGroups?.length ?? existing.deGroups?.length ?? existing.rrGroups?.length);
-            document.getElementById("te-stage1-type").value = existing.stage1Type || (existing.swissGroups?.length ? "swiss" : (existing.deGroups?.length ? "gsl" : "round_robin"));
-            document.getElementById("te-group-count").value = String(existing.groupCount || 1);
-            document.getElementById("te-group-size").value = String(existing.groupSize || 16);
-            document.getElementById("te-advance-per-group").value = String(existing.advancePerGroup || 2);
+            setCheck("te-enable-stage1", existing.hasStage1 ?? existing.swissGroups?.length ?? existing.deGroups?.length ?? existing.rrGroups?.length);
+            setVal("te-stage1-type", existing.stage1Type || (existing.swissGroups?.length ? "swiss" : (existing.deGroups?.length ? "gsl" : "round_robin")));
+            setVal("te-group-count", existing.groupCount || 1);
+            setVal("te-group-size", existing.groupSize || 16);
+            setVal("te-advance-per-group", existing.advancePerGroup || 2);
 
-            document.getElementById("te-enable-playin").checked = Boolean(existing.hasPlayIn ?? existing.playInStage);
-            document.getElementById("te-playin-matches").value = String(existing.playInMatches || 4);
+            setCheck("te-enable-playin", existing.hasPlayIn ?? existing.playInStage);
+            setVal("te-playin-matches", existing.playInMatches || 4);
 
-            document.getElementById("te-enable-playoffs").checked = Boolean(existing.hasPlayoffs ?? (existing.rounds?.length > 0));
-            document.getElementById("te-playoff-type").value = existing.playoffType || (existing.isDoubleElimPlayoffs ? "double_elim" : "single_elim");
-            document.getElementById("te-playoff-size").value = String(existing.playoffSize || (existing.isQuali32 ? 32 : (existing.rounds?.length ? (existing.rounds[0].days.flatMap(d => d.matches).length * 2) : 8)));
-            document.getElementById("te-direct-invites").value = String(existing.directInvites || 0);
+            setCheck("te-enable-playoffs", existing.hasPlayoffs ?? (existing.rounds?.length > 0));
+            setVal("te-playoff-type", existing.playoffType || (existing.isDoubleElimPlayoffs ? "double_elim" : "single_elim"));
+            setVal("te-playoff-size", existing.playoffSize || (existing.isQuali32 ? 32 : (existing.rounds?.length ? (existing.rounds[0].days.flatMap(d => d.matches).length * 2) : 8)));
+            setVal("te-direct-invites", existing.directInvites || 0);
 
             const findAmt = (src) => existing.prizeDistribution?.find(d => d.sourceType === src)?.amount || "";
-            document.getElementById("te-prize-1").value = findAmt("final-winner");
-            document.getElementById("te-prize-2").value = findAmt("final-loser");
-            document.getElementById("te-prize-34").value = findAmt("sf-losers");
-            document.getElementById("te-prize-58").value = findAmt("qf-losers");
-            document.getElementById("te-location-notice").value = existing.notices?.find(n => n.type === "info")?.text || "";
-            document.getElementById("te-travel-notice").value = existing.notices?.find(n => n.type === "warning")?.text || "";
+            setVal("te-prize-1", findAmt("final-winner"));
+            setVal("te-prize-2", findAmt("final-loser"));
+            setVal("te-prize-34", findAmt("sf-losers"));
+            setVal("te-prize-58", findAmt("qf-losers"));
+            setVal("te-location-notice", existing.notices?.find(n => n.type === "info")?.text || "");
+            setVal("te-travel-notice", existing.notices?.find(n => n.type === "warning")?.text || "");
         } else {
-            document.getElementById("te-start-date").value = "2025-02-01";
-            document.getElementById("te-enable-playoffs").checked = true;
+            setVal("te-start-date", "2025-02-01");
+            setCheck("te-enable-playoffs", true);
         }
 
         updateModularEditorVisibility();
