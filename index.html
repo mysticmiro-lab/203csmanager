@@ -64,7 +64,19 @@
             </div>
         </aside>
         <main class="main-content">
-            <header class="topbar"><h1 id="view-title">Tutorial</h1><div class="topbar-status"><span class="status-dot"></span> <span id="connection-status-text">Live (Online)</span></div></header>
+            <header class="topbar">
+                <h1 id="view-title">Tutorial</h1>
+                <div class="topbar-controls">
+                    <span class="game-date-pill" id="topbar-game-date" title="Aktuelles Ingame-Datum">📅 1. Januar 2025</span>
+                    <button type="button" id="btn-advance-day" class="btn btn-accent btn-small hidden" title="Gesamtes Spiel um 1 Tag vorstellen">⏭️ +1 Tag</button>
+                    <select id="timezone-select" class="timezone-select" aria-label="Zeitzone auswählen" title="Zeitzone für Spielzeiten">
+                        <option value="europe">🇪🇺 Europa (UTC+1)</option>
+                        <option value="americas">🌎 Americas (UTC-5)</option>
+                        <option value="asia">🌏 Asien / Ozeanien (UTC+8)</option>
+                    </select>
+                    <div class="topbar-status"><span class="status-dot"></span> <span id="connection-status-text">Live</span></div>
+                </div>
+            </header>
             <div class="content-body">
                 <section id="view-tutorial" class="view-section active"><div class="card"><h2>Willkommen beim HLTV Manager!</h2><p>Dies ist dein Browser-Manager-Spiel, das du zusammen mit deinen Freunden online spielst.</p><div class="tutorial-grid">
                     <div class="tutorial-step"><h3>1. Anmeldung &amp; Teams</h3><p>Der Admin erstellt im Admin-Panel Spielerkonten und teilt das Start-Passwort mit. Alle Änderungen an Teams, News, Chat &amp; Turnieren werden live synchronisiert.</p></div>
@@ -82,7 +94,16 @@
                 <section id="view-turniere" class="view-section"><div id="tournaments-root"></div></section>
                 <section id="view-team" class="view-section"><div class="card"><div id="team-directory"><h2>Meine Teams</h2><p class="muted-text">Wähle einen Teambereich aus, um die Teamübersicht zu öffnen.</p><ul id="team-directory-list" class="team-directory-list"></ul></div><div id="team-details" class="team-details-card hidden"><div class="team-header"><div class="team-badge" id="team-view-badge">🛡️</div><div><h2 id="team-view-name">Teamname</h2><p class="muted-text" id="team-view-owner">Manager: -</p></div><div id="team-manager-actions" class="team-manager-actions"></div></div><div class="team-details-grid"><div class="stat-box"><span class="stat-label">Status</span><span class="stat-value" id="team-stat-status">Aktiv</span></div><div class="stat-box"><span class="stat-label">Kadergröße</span><span class="stat-value" id="team-stat-squad">0 / 5 Spieler</span></div><div class="stat-box"><span class="stat-label">Budget</span><span class="stat-value" id="team-stat-budget">10.000 $</span></div><div class="stat-box"><span class="stat-label">VRS-Punkte</span><span class="stat-value" id="team-stat-points">0</span></div></div><div class="placeholder-box team-detail-roster" id="team-roster-panel" style="margin-top:20px"></div></div></div></section>
                 <section id="view-ranking" class="view-section"><div class="card"><h2>🏆 Ranking</h2><p class="muted-text">Globales Weltranking aus offiziellen HLTV-/VRS-Teams und euren Spielerteams (live synchronisiert).</p><div id="ranking-content"></div></div></section>
-                <section id="view-admin-panel" class="view-section"><div class="admin-grid"><div class="card"><h2>Neuen Spieler-Account erstellen</h2><p class="muted-text">Erstellt direkt ein echtes Firebase-Auth-Konto für deinen Freund und generiert ein Start-Passwort (mind. 6 Zeichen).</p><form id="add-player-form" class="inline-form"><input type="text" id="new-player-username" placeholder="z.B. s1mple_fan99" required autocomplete="off"><button type="submit" id="add-player-btn" class="btn btn-accent">Erstellen</button></form><div id="admin-feedback" class="feedback-msg hidden"></div></div><div class="card"><h2>Registrierte Spieler (<span id="player-count">0</span>)</h2><ul id="admin-player-list" class="admin-list"></ul></div></div></section>
+                <section id="view-admin-panel" class="view-section"><div class="admin-grid"><div class="card"><div class="card">
+                    <h2>Spieldatum steuern</h2>
+                    <p class="muted-text">Aktuelles Spieldatum: <strong id="admin-game-date-display">1. Januar 2025</strong>. Mit „+1 Tag“ rücken Weltranking, Turnier-Status und abgeschlossene Match-Ergebnisse automatisch weiter.</p>
+                    <div class="inline-form">
+                        <button type="button" id="admin-prev-day-btn" class="btn btn-secondary">⏮️ -1 Tag</button>
+                        <button type="button" id="admin-next-day-btn" class="btn btn-accent">⏭️ +1 Tag</button>
+                        <input type="date" id="admin-game-date-input" value="2025-01-01" style="max-width:170px;">
+                        <button type="button" id="admin-set-date-btn" class="btn btn-primary">Datum setzen</button>
+                    </div>
+                </div><h2>Neuen Spieler-Account erstellen</h2><p class="muted-text">Erstellt direkt ein echtes Firebase-Auth-Konto für deinen Freund und generiert ein Start-Passwort (mind. 6 Zeichen).</p><form id="add-player-form" class="inline-form"><input type="text" id="new-player-username" placeholder="z.B. s1mple_fan99" required autocomplete="off"><button type="submit" id="add-player-btn" class="btn btn-accent">Erstellen</button></form><div id="admin-feedback" class="feedback-msg hidden"></div></div><div class="card"><h2>Registrierte Spieler (<span id="player-count">0</span>)</h2><ul id="admin-player-list" class="admin-list"></ul></div></div></section>
             </div>
         </main>
     </div>
@@ -108,14 +129,19 @@
                     <div class="input-group">
                         <label for="te-status">Kategorie / Status</label>
                         <select id="te-status">
-                            <option value="zukuenftig">🗓️ Zukünftig</option>
-                            <option value="laufend">🔴 Aktuell laufend</option>
-                            <option value="vergangen">🏁 Vergangen</option>
+                            <option value="auto" selected>🔄 Automatisch nach Spieldatum</option>
+                            <option value="zukuenftig">🗓️ Manuell: Zukünftig</option>
+                            <option value="laufend">🔴 Manuell: Aktuell laufend</option>
+                            <option value="vergangen">🏁 Manuell: Vergangen</option>
                         </select>
                     </div>
                     <div class="input-group">
                         <label for="te-start-date">Startdatum (für Spieltage) *</label>
                         <input type="date" id="te-start-date" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="te-end-date">Enddatum (für Auto-Status)</label>
+                        <input type="date" id="te-end-date">
                     </div>
                     <div class="input-group">
                         <label for="te-online-dates">Zeitraum-Anzeige *</label>
