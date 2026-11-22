@@ -1157,6 +1157,37 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent-blue); }
     color: var(--text-main);
 }
 
+/* Topbar Spieldatum & Zeitzonen-Umschalter */
+.topbar-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+.game-date-pill {
+    padding: 5px 11px;
+    border: 1px solid rgba(59,130,246,.45);
+    border-radius: 999px;
+    background: rgba(59,130,246,.14);
+    color: #93c5fd;
+    font-size: .84rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.timezone-select {
+    width: auto;
+    padding: 5px 10px;
+    font-size: .82rem;
+    border-radius: 6px;
+    background: var(--bg-dark);
+    color: var(--text-main);
+}
+.match-tz-preview {
+    font-size: .7rem;
+    color: #93c5fd;
+    margin-top: 2px;
+}
+
 @media (max-width: 760px) {
     .app-container { flex-direction: column; }
     .sidebar { width: 100%; min-height: auto; flex: none; border-right: 0; border-bottom: 1px solid var(--border-color); }
