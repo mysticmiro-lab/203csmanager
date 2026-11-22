@@ -6,6 +6,8 @@ export function createTournamentsModule(deps) {
         getTeamName,
         getVrsRankingsMap,
         getSelectedRankingDate,
+        getGameDate,
+        getTimezone,
         getTournamentsCache,
         saveTournamentDoc,
         deleteTournamentDoc,
@@ -17,6 +19,12 @@ export function createTournamentsModule(deps) {
     let activeSubTab = "";
     let selectedVrsDate = "";
     let vrsSearchTerm = "";
+
+    const TIMEZONES = {
+        europe: { label: "UTC+1", offsetFromBase: 0 },
+        americas: { label: "UTC-5", offsetFromBase: -6 },
+        asia: { label: "UTC+8", offsetFromBase: 7 }
+    };
 
     const esc = (str) => {
         const div = document.createElement("div");
@@ -37,14 +45,24 @@ export function createTournamentsModule(deps) {
         return Number.isNaN(dt.getTime()) ? iso : dt.toLocaleDateString("de-DE", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
     };
 
-    // Wandelt manuelle Datumseingaben (z. B. "30. Januar 2025", "30.01.2025", "2025-01-30") in ISO um
+    const convertFromBaseTimezone = (dateISO, timeStr, tzKey) => {
+        const tz = TIMEZONES[tzKey] || TIMEZONES.europe;
+        if (!dateISO || !timeStr || !/^\d{2}:\d{2}$/.test(timeStr)) {
+            return { dateISO, timeStr, tzLabel: tz.label };
+        }
+        const [y, m, d] = dateISO.split("-").map(Number);
+        const [hh, mm] = timeStr.split(":").map(Number);
+        const shifted = new Date(Date.UTC(y, m - 1, d, hh + tz.offsetFromBase, mm));
+        const outDate = `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
+        const outTime = `${String(shifted.getUTCHours()).padStart(2, "0")}:${String(shifted.getUTCMinutes()).padStart(2, "0")}`;
+        return { dateISO: outDate, timeStr: outTime, tzLabel: tz.label };
+    };
+
     const tryParseGermanOrIsoDate = (text) => {
         const s = String(text || "").trim();
         if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
         const dotMatch = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-        if (dotMatch) {
-            return `${dotMatch[3]}-${dotMatch[2].padStart(2, "0")}-${dotMatch[1].padStart(2, "0")}`;
-        }
+        if (dotMatch) return `${dotMatch[3]}-${dotMatch[2].padStart(2, "0")}-${dotMatch[1].padStart(2, "0")}`;
         const months = {
             januar: 1, jan: 1, februar: 2, feb: 2, märz: 3, maerz: 3, mär: 3, april: 4, apr: 4,
             mai: 5, juni: 6, jun: 6, juli: 7, jul: 7, august: 8, aug: 8, september: 9, sep: 9,
@@ -60,6 +78,48 @@ export function createTournamentsModule(deps) {
 
     const getTournamentById = (id) => getTournamentsCache().find(t => t.id === id) || null;
     const isAdmin = () => getCurrentUser()?.role === "admin";
+    const currentGameDate = () => getGameDate?.() || "2025-01-01";
+
+    function getTournamentDateBounds(t) {
+        const dates = [];
+        const addIso = (v) => { if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) dates.push(v); };
+        addIso(t.startDate);
+        addIso(t.endDate);
+        (t.rounds || []).forEach(r => (r.days || []).forEach(d => {
+            addIso(d.dateISO);
+            (d.matches || []).forEach(m => addIso(m.defaultDateISO));
+        }));
+        (t.swissGroups || []).forEach(g => (g.rounds || []).forEach(r => {
+            addIso(r.dateISO);
+            (r.matches || []).forEach(m => addIso(m.defaultDateISO));
+        }));
+        (t.rrGroups || []).forEach(g => (g.rounds || []).forEach(r => {
+            addIso(r.dateISO);
+            (r.matches || []).forEach(m => addIso(m.defaultDateISO));
+        }));
+        (t.deGroups || []).forEach(g => (g.matches || []).forEach(m => addIso(m.defaultDateISO)));
+        (t.playInStage?.rounds || []).forEach(r => (r.days || []).forEach(d => {
+            addIso(d.dateISO);
+            (d.matches || []).forEach(m => addIso(m.defaultDateISO));
+        }));
+        Object.values(t.matchSchedules || {}).forEach(sc => addIso(sc?.date));
+        dates.sort();
+
+        const start = /^\d{4}-\d{2}-\d{2}$/.test(t.startDate || "") ? t.startDate : (dates[0] || "2025-01-01");
+        const end = /^\d{4}-\d{2}-\d{2}$/.test(t.endDate || "") ? t.endDate : (dates[dates.length - 1] || start);
+        return { start, end: end < start ? start : end };
+    }
+
+    function getEffectiveStatus(t) {
+        if (t.statusMode === "manual" && ["laufend", "zukuenftig", "vergangen"].includes(t.status)) {
+            return t.status;
+        }
+        const gDate = currentGameDate();
+        const { start, end } = getTournamentDateBounds(t);
+        if (gDate < start) return "zukuenftig";
+        if (gDate > end) return "vergangen";
+        return "laufend";
+    }
 
     function formatCategoryBadge(status) {
         if (status === "laufend") return { label: "🔴 Aktuell laufend", cls: "t-badge-laufend" };
@@ -84,33 +144,26 @@ export function createTournamentsModule(deps) {
         return { days, nextOffset: dayOffset + days.length };
     }
 
-    // Double Elimination Play-In / Quali (16 Teams -> 20 Matches -> 8 Qualifikanten) & Vollständig
     function buildDoubleElimPlayoffs(size, startDate, dayOffset, defaultFormat, finalFormat, isQualifierMode = false) {
         let offset = dayOffset;
 
         if (size === 16 && isQualifierMode) {
             const ubR1 = Array.from({ length: 8 }, (_, i) => ({
-                id: `de-ub-r1-${i + 1}`,
-                label: `UB Achtelfinale ${i + 1}`,
-                format: defaultFormat,
+                id: `de-ub-r1-${i + 1}`, label: `UB Achtelfinale ${i + 1}`, format: defaultFormat,
                 slotHints: [`Seed #${i * 2 + 1}`, `Seed #${i * 2 + 2}`]
             }));
             const d1 = chunkIntoDays(ubR1, startDate, offset, 4);
             offset = d1.nextOffset;
 
             const lbR1 = Array.from({ length: 4 }, (_, i) => ({
-                id: `de-lb-r1-${i + 1}`,
-                label: `LB Runde 1 #${i + 1}`,
-                format: defaultFormat,
+                id: `de-lb-r1-${i + 1}`, label: `LB Runde 1 #${i + 1}`, format: defaultFormat,
                 fromLosers: [`de-ub-r1-${i * 2 + 1}`, `de-ub-r1-${i * 2 + 2}`],
                 slotHints: [`Verlierer UB R1 #${i * 2 + 1}`, `Verlierer UB R1 #${i * 2 + 2}`]
             }));
             const d3 = chunkIntoDays(lbR1, startDate, offset, 4);
 
             const ubR2 = Array.from({ length: 4 }, (_, i) => ({
-                id: `de-ub-r2-${i + 1}`,
-                label: `UB Quali-Runde ${i + 1}`,
-                format: defaultFormat,
+                id: `de-ub-r2-${i + 1}`, label: `UB Quali-Runde ${i + 1}`, format: defaultFormat,
                 fromMatches: [`de-ub-r1-${i * 2 + 1}`, `de-ub-r1-${i * 2 + 2}`],
                 slotHints: [`Sieger UB R1 #${i * 2 + 1}`, `Sieger UB R1 #${i * 2 + 2}`],
                 isQualifyingMatch: true
@@ -119,13 +172,8 @@ export function createTournamentsModule(deps) {
             offset = Math.max(d2.nextOffset, d3.nextOffset);
 
             const lbR2 = Array.from({ length: 4 }, (_, i) => ({
-                id: `de-lb-r2-${i + 1}`,
-                label: `LB Quali-Runde ${i + 1}`,
-                format: defaultFormat,
-                fromMixed: [
-                    { type: "winner", id: `de-lb-r1-${i + 1}` },
-                    { type: "loser", id: `de-ub-r2-${4 - i}` }
-                ],
+                id: `de-lb-r2-${i + 1}`, label: `LB Quali-Runde ${i + 1}`, format: defaultFormat,
+                fromMixed: [{ type: "winner", id: `de-lb-r1-${i + 1}` }, { type: "loser", id: `de-ub-r2-${4 - i}` }],
                 slotHints: [`Sieger LB R1 #${i + 1}`, `Absteiger UB Quali #${4 - i}`],
                 isQualifyingMatch: true
             }));
@@ -151,20 +199,13 @@ export function createTournamentsModule(deps) {
 
         if (size === 16) {
             const ubR1 = Array.from({ length: 8 }, (_, i) => ({ id: `de-ub-r1-${i + 1}`, label: `UB Achtelfinale ${i + 1}`, format: defaultFormat }));
-            const d1 = chunkIntoDays(ubR1, startDate, offset, 4);
-            offset = d1.nextOffset;
-
+            const d1 = chunkIntoDays(ubR1, startDate, offset, 4); offset = d1.nextOffset;
             const ubQf = Array.from({ length: 4 }, (_, i) => ({ id: `de-ub-qf-${i + 1}`, label: `UB Viertelfinale ${i + 1}`, format: defaultFormat, fromMatches: [`de-ub-r1-${i * 2 + 1}`, `de-ub-r1-${i * 2 + 2}`] }));
-            const d2 = chunkIntoDays(ubQf, startDate, offset, 4);
-            offset = d2.nextOffset;
-
+            const d2 = chunkIntoDays(ubQf, startDate, offset, 4); offset = d2.nextOffset;
             const ubSf = Array.from({ length: 2 }, (_, i) => ({ id: `de-ub-sf-${i + 1}`, label: `UB Halbfinale ${i + 1}`, format: defaultFormat, fromMatches: [`de-ub-qf-${i * 2 + 1}`, `de-ub-qf-${i * 2 + 2}`] }));
-            const d3 = chunkIntoDays(ubSf, startDate, offset, 2);
-            offset = d3.nextOffset;
-
+            const d3 = chunkIntoDays(ubSf, startDate, offset, 2); offset = d3.nextOffset;
             const ubF = [{ id: "de-ub-f-1", label: "Upper Bracket Finale", format: defaultFormat, fromMatches: ["de-ub-sf-1", "de-ub-sf-2"] }];
-            const d4 = chunkIntoDays(ubF, startDate, offset, 1);
-            offset = d4.nextOffset;
+            const d4 = chunkIntoDays(ubF, startDate, offset, 1); offset = d4.nextOffset;
 
             const lbR1 = Array.from({ length: 4 }, (_, i) => ({ id: `de-lb-r1-${i + 1}`, label: `LB Runde 1 #${i + 1}`, format: defaultFormat, fromLosers: [`de-ub-r1-${i * 2 + 1}`, `de-ub-r1-${i * 2 + 2}`] }));
             const lbR2 = Array.from({ length: 4 }, (_, i) => ({ id: `de-lb-r2-${i + 1}`, label: `LB Runde 2 #${i + 1}`, format: defaultFormat, fromMixed: [{ type: "winner", id: `de-lb-r1-${i + 1}` }, { type: "loser", id: `de-ub-qf-${4 - i}` }] }));
@@ -175,9 +216,7 @@ export function createTournamentsModule(deps) {
             const gf = [{ id: "de-gf-1", label: "Grand Final", format: finalFormat, fromMatches: ["de-ub-f-1", "de-lb-f-1"] }];
 
             return {
-                isDoubleElim: true,
-                isQualifierOnly: false,
-                size: 16,
+                isDoubleElim: true, isQualifierOnly: false, size: 16,
                 rounds: [
                     { id: "ub-r1", name: "UB Achtelfinale", defaultFormat, days: d1.days },
                     { id: "ub-qf", name: "UB Viertelfinale", defaultFormat, days: d2.days },
@@ -199,13 +238,11 @@ export function createTournamentsModule(deps) {
         const ubF = [{ id: "de8-ub-f-1", label: "UB Finale", format: defaultFormat, fromMatches: ["de8-ub-sf-1", "de8-ub-sf-2"] }];
         const lbR1 = Array.from({ length: 2 }, (_, i) => ({ id: `de8-lb-r1-${i + 1}`, label: `LB Runde 1 #${i + 1}`, format: defaultFormat, fromLosers: [`de8-ub-qf-${i * 2 + 1}`, `de8-ub-qf-${i * 2 + 2}`] }));
         const lbR2 = Array.from({ length: 2 }, (_, i) => ({ id: `de8-lb-r2-${i + 1}`, label: `LB Runde 2 #${i + 1}`, format: defaultFormat, fromMixed: [{ type: "winner", id: `de8-lb-r1-${i + 1}` }, { type: "loser", id: `de8-ub-sf-${2 - i}` }] }));
-        const lbF = [{ id: "de8-lb-f-1", label: "LB Finale", format: defaultFormat, fromMixed: [{ type: "loser", id: "de8-ub-f-1" }, { type: "winner", id: "de8-lb-r2-1" }] }];
+        const lbF = [{ id: "de8-lb-f-1", label: "LB Finale", format: defaultFormat, fromMixed: [{ type: "loser", id: "de8-ub-f-1" }, { type: "winner", id: `de8-lb-r2-1` }] }];
         const gf = [{ id: "de8-gf-1", label: "Grand Final", format: finalFormat, fromMatches: ["de8-ub-f-1", "de8-lb-f-1"] }];
 
         return {
-            isDoubleElim: true,
-            isQualifierOnly: false,
-            size: 8,
+            isDoubleElim: true, isQualifierOnly: false, size: 8,
             rounds: [
                 { id: "ub-qf", name: "UB Viertelfinale", defaultFormat, days: chunkIntoDays(ubQf, startDate, offset, 4).days },
                 { id: "ub-sf", name: "UB Halbfinale", defaultFormat, days: chunkIntoDays(ubSf, startDate, offset + 1, 2).days },
@@ -230,41 +267,24 @@ export function createTournamentsModule(deps) {
             ];
             rounds.push({ id: "po-qf", name: "Viertelfinale", defaultFormat, days: chunkIntoDays(vf, startDate, offset, 2).days });
             offset += 1;
-
             const hf = [
                 { id: "po-sf-1", label: "Halbfinale 1", format: defaultFormat, fromMatches: [null, "po-qf-1"], slotHints: ["Gruppensieger A (Freilos)", "Sieger VF #1"] },
                 { id: "po-sf-2", label: "Halbfinale 2", format: defaultFormat, fromMatches: [null, "po-qf-2"], slotHints: ["Gruppensieger B (Freilos)", "Sieger VF #2"] }
             ];
             rounds.push({ id: "po-sf", name: "Halbfinale", defaultFormat, days: chunkIntoDays(hf, startDate, offset, 2).days });
             offset += 1;
-
             const fin = [{ id: "po-final-1", label: "Grand Final", format: finalFormat, fromMatches: ["po-sf-1", "po-sf-2"], slotHints: ["Sieger HF #1", "Sieger HF #2"] }];
             rounds.push({ id: "po-final", name: "Finale", defaultFormat: finalFormat, days: chunkIntoDays(fin, startDate, offset, 1).days });
             return rounds;
         }
 
         const stages = size === 32 && isQuali32
-            ? [
-                { id: "r32", name: "Round of 32", label: "R32 Match", count: 16, fmt: defaultFormat },
-                { id: "r16", name: "Round of 16", label: "R16 Match", count: 8, fmt: defaultFormat }
-            ]
+            ? [{ id: "r32", name: "Round of 32", label: "R32 Match", count: 16, fmt: defaultFormat }, { id: "r16", name: "Round of 16", label: "R16 Match", count: 8, fmt: defaultFormat }]
             : size === 16
-                ? [
-                    { id: "r16", name: "Achtelfinale", label: "Achtelfinale", count: 8, fmt: defaultFormat },
-                    { id: "qf", name: "Viertelfinale", label: "Viertelfinale", count: 4, fmt: defaultFormat },
-                    { id: "sf", name: "Halbfinale", label: "Halbfinale", count: 2, fmt: defaultFormat },
-                    { id: "final", name: "Finale", label: "Grand Final", count: 1, fmt: finalFormat }
-                ]
+                ? [{ id: "r16", name: "Achtelfinale", label: "Achtelfinale", count: 8, fmt: defaultFormat }, { id: "qf", name: "Viertelfinale", label: "Viertelfinale", count: 4, fmt: defaultFormat }, { id: "sf", name: "Halbfinale", label: "Halbfinale", count: 2, fmt: defaultFormat }, { id: "final", name: "Finale", label: "Grand Final", count: 1, fmt: finalFormat }]
                 : size === 8
-                    ? [
-                        { id: "qf", name: "Viertelfinale", label: "Viertelfinale", count: 4, fmt: defaultFormat },
-                        { id: "sf", name: "Halbfinale", label: "Halbfinale", count: 2, fmt: defaultFormat },
-                        { id: "final", name: "Finale", label: "Grand Final", count: 1, fmt: finalFormat }
-                    ]
-                    : [
-                        { id: "sf", name: "Halbfinale", label: "Halbfinale", count: 2, fmt: defaultFormat },
-                        { id: "final", name: "Finale", label: "Grand Final", count: 1, fmt: finalFormat }
-                    ];
+                    ? [{ id: "qf", name: "Viertelfinale", label: "Viertelfinale", count: 4, fmt: defaultFormat }, { id: "sf", name: "Halbfinale", label: "Halbfinale", count: 2, fmt: defaultFormat }, { id: "final", name: "Finale", label: "Grand Final", count: 1, fmt: finalFormat }]
+                    : [{ id: "sf", name: "Halbfinale", label: "Halbfinale", count: 2, fmt: defaultFormat }, { id: "final", name: "Finale", label: "Grand Final", count: 1, fmt: finalFormat }];
 
         let prevIds = null;
         stages.forEach((st, idx) => {
@@ -290,16 +310,13 @@ export function createTournamentsModule(deps) {
 
     function buildPlayInStage(matchCount, startDate, dayOffset, format) {
         const matches = Array.from({ length: matchCount }, (_, i) => ({
-            id: `pi-m-${i + 1}`,
-            label: `Play-In Match ${i + 1}`,
-            format,
+            id: `pi-m-${i + 1}`, label: `Play-In Match ${i + 1}`, format,
             slotHints: [`Play-In Team ${i * 2 + 1}`, `Play-In Team ${i * 2 + 2}`]
         }));
         const chunked = chunkIntoDays(matches, startDate, dayOffset, Math.min(4, matchCount));
         return {
-            matchCount,
-            advanceCount: matchCount,
-            rounds: [{ id: "play-in-r1", name: "Play-In Phase", defaultFormat: format, subtitle: `${matchCount} Entscheidungs-Matches (${format}) → ${matchCount} Sieger qualifizieren sich`, days: chunked.days }],
+            matchCount, advanceCount: matchCount,
+            rounds: [{ id: "play-in-r1", name: "Play-In Phase", defaultFormat: format, subtitle: `${matchCount} Matches (${format}) → ${matchCount} Sieger weiter`, days: chunked.days }],
             qualifierMatchIds: matches.map(m => m.id),
             nextOffset: chunked.nextOffset
         };
@@ -310,14 +327,9 @@ export function createTournamentsModule(deps) {
         const rounds = roundCounts.map((count, rIdx) => {
             const isoDate = addDaysISO(startDate, dayOffset + rIdx);
             return {
-                id: `sw-${groupId}-r${rIdx + 1}`,
-                name: `Runde ${rIdx + 1}`,
-                dateISO: isoDate,
-                dateLabel: formatDateDE(isoDate),
+                id: `sw-${groupId}-r${rIdx + 1}`, name: `Runde ${rIdx + 1}`, dateISO: isoDate, dateLabel: formatDateDE(isoDate),
                 matches: Array.from({ length: count }, (_, i) => ({
-                    id: `sw-${groupId}-r${rIdx + 1}-${i + 1}`,
-                    label: `${name} R${rIdx + 1} #${i + 1}`,
-                    defaultDateISO: isoDate,
+                    id: `sw-${groupId}-r${rIdx + 1}-${i + 1}`, label: `${name} R${rIdx + 1} #${i + 1}`, defaultDateISO: isoDate,
                     format: (rIdx >= roundCounts.length - 1 || (teamCount >= 16 && rIdx >= 2)) ? deciderFormat : defaultFormat
                 }))
             };
@@ -327,49 +339,40 @@ export function createTournamentsModule(deps) {
 
     function buildGslGroup(groupId, size, startDate, dayOffset, defaultFormat, advanceCount = 2) {
         const p = `gsl-${groupId}`;
-        const offset = dayOffset;
         const adv = Number(advanceCount) || 2;
-        const iso0 = addDaysISO(startDate, offset);
-        const iso1 = addDaysISO(startDate, offset + 1);
-        const iso2 = addDaysISO(startDate, offset + 2);
-        const iso3 = addDaysISO(startDate, offset + 3);
+        const iso0 = addDaysISO(startDate, dayOffset), iso1 = addDaysISO(startDate, dayOffset + 1);
+        const iso2 = addDaysISO(startDate, dayOffset + 2), iso3 = addDaysISO(startDate, dayOffset + 3);
 
         if (size === 4) {
             if (adv === 1) {
                 return {
-                    id: groupId,
-                    name: `Gruppe ${groupId}`,
-                    size: 4,
-                    advanceCount: 1,
+                    id: groupId, name: `Gruppe ${groupId}`, size: 4, advanceCount: 1,
                     matches: [
                         { id: `${p}-o1`, round: "Opening", label: `Grp ${groupId} Opening 1`, defaultDateISO: iso0, dateLabel: formatDateDE(iso0), format: defaultFormat, slotHints: ["Seed 1", "Seed 4"] },
                         { id: `${p}-o2`, round: "Opening", label: `Grp ${groupId} Opening 2`, defaultDateISO: iso0, dateLabel: formatDateDE(iso0), format: defaultFormat, slotHints: ["Seed 2", "Seed 3"] },
                         { id: `${p}-ub`, round: "Upper Final", label: `Grp ${groupId} Upper Final`, defaultDateISO: iso1, dateLabel: formatDateDE(iso1), format: defaultFormat, fromMatches: [`${p}-o1`, `${p}-o2`], slotHints: ["Sieger Opening 1", "Sieger Opening 2"] },
                         { id: `${p}-lb`, round: "Elimination", label: `Grp ${groupId} Elimination`, defaultDateISO: iso1, dateLabel: formatDateDE(iso1), format: defaultFormat, fromLosers: [`${p}-o1`, `${p}-o2`], slotHints: ["Verlierer Opening 1", "Verlierer Opening 2"] },
                         { id: `${p}-cf`, round: "Consolidation", label: `Grp ${groupId} Consolidation Final`, defaultDateISO: iso2, dateLabel: formatDateDE(iso2), format: defaultFormat, fromMixed: [{ type: "loser", id: `${p}-ub` }, { type: "winner", id: `${p}-lb` }], slotHints: ["Verlierer Upper Final", "Sieger Elimination"] },
-                        { id: `${p}-gf`, round: "Group Final", label: `Grp ${groupId} Group Final (Gruppensieger)`, defaultDateISO: iso3, dateLabel: formatDateDE(iso3), format: defaultFormat, fromMatches: [`${p}-ub`, `${p}-cf`], slotHints: ["Sieger Upper Final", "Sieger Consolidation"] }
+                        { id: `${p}-gf`, round: "Group Final", label: `Grp ${groupId} Group Final`, defaultDateISO: iso3, dateLabel: formatDateDE(iso3), format: defaultFormat, fromMatches: [`${p}-ub`, `${p}-cf`], slotHints: ["Sieger Upper Final", "Sieger Consolidation"] }
                     ],
                     qualifierMatchIds: [`${p}-gf`],
-                    nextOffset: offset + 4
+                    nextOffset: dayOffset + 4
                 };
             }
             return {
-                id: groupId,
-                name: `Gruppe ${groupId}`,
-                size: 4,
-                advanceCount: 2,
+                id: groupId, name: `Gruppe ${groupId}`, size: 4, advanceCount: 2,
                 matches: [
                     { id: `${p}-o1`, round: "Opening", label: `Grp ${groupId} Opening 1`, defaultDateISO: iso0, dateLabel: formatDateDE(iso0), format: defaultFormat, slotHints: ["Seed 1", "Seed 4"] },
                     { id: `${p}-o2`, round: "Opening", label: `Grp ${groupId} Opening 2`, defaultDateISO: iso0, dateLabel: formatDateDE(iso0), format: defaultFormat, slotHints: ["Seed 2", "Seed 3"] },
-                    { id: `${p}-w1`, round: "Winners", label: `Grp ${groupId} Winners (Quali #1)`, defaultDateISO: iso1, dateLabel: formatDateDE(iso1), format: defaultFormat, fromMatches: [`${p}-o1`, `${p}-o2`], slotHints: ["Sieger Opening 1", "Sieger Opening 2"] },
+                    { id: `${p}-w1`, round: "Winners", label: `Grp ${groupId} Winners`, defaultDateISO: iso1, dateLabel: formatDateDE(iso1), format: defaultFormat, fromMatches: [`${p}-o1`, `${p}-o2`], slotHints: ["Sieger Opening 1", "Sieger Opening 2"] },
                     { id: `${p}-l1`, round: "Elimination", label: `Grp ${groupId} Elimination`, defaultDateISO: iso1, dateLabel: formatDateDE(iso1), format: defaultFormat, fromLosers: [`${p}-o1`, `${p}-o2`], slotHints: ["Verlierer Opening 1", "Verlierer Opening 2"] },
-                    { id: `${p}-d1`, round: "Decider", label: `Grp ${groupId} Decider (Quali #2)`, defaultDateISO: iso2, dateLabel: formatDateDE(iso2), format: defaultFormat, fromMixed: [{ type: "loser", id: `${p}-w1` }, { type: "winner", id: `${p}-l1` }], slotHints: ["Verlierer Winners", "Sieger Elimination"] }
+                    { id: `${p}-d1`, round: "Decider", label: `Grp ${groupId} Decider`, defaultDateISO: iso2, dateLabel: formatDateDE(iso2), format: defaultFormat, fromMixed: [{ type: "loser", id: `${p}-w1` }, { type: "winner", id: `${p}-l1` }], slotHints: ["Verlierer Winners", "Sieger Elimination"] }
                 ],
                 qualifierMatchIds: [`${p}-w1`, `${p}-d1`],
-                nextOffset: offset + 3
+                nextOffset: dayOffset + 3
             };
         }
-        return { id: groupId, name: `Gruppe ${groupId}`, size, advanceCount: adv, matches: [], qualifierMatchIds: [], nextOffset: offset + 2 };
+        return { id: groupId, name: `Gruppe ${groupId}`, size, advanceCount: adv, matches: [], qualifierMatchIds: [], nextOffset: dayOffset + 2 };
     }
 
     function buildRoundRobinGroup(groupId, size, advanceCount, startDate, dayOffset, defaultFormat) {
@@ -382,13 +385,7 @@ export function createTournamentsModule(deps) {
             for (let i = 0; i < n / 2; i++) {
                 const a = arr[i], b = arr[n - 1 - i];
                 if (a < size && b < size) {
-                    matches.push({
-                        id: `rr-${groupId}-r${r + 1}-${matches.length + 1}`,
-                        label: `Grp ${groupId} · R${r + 1} #${matches.length + 1}`,
-                        defaultDateISO: iso,
-                        format: defaultFormat,
-                        initialSlotIndices: [a, b]
-                    });
+                    matches.push({ id: `rr-${groupId}-r${r + 1}-${matches.length + 1}`, label: `Grp ${groupId} · R${r + 1} #${matches.length + 1}`, defaultDateISO: iso, format: defaultFormat, initialSlotIndices: [a, b] });
                 }
             }
             rounds.push({ id: `rr-${groupId}-r${r + 1}`, name: `Runde ${r + 1}`, dateISO: iso, dateLabel: formatDateDE(iso), matches });
@@ -459,24 +456,13 @@ export function createTournamentsModule(deps) {
             if (isDoubleElimQuali || playoffType === "double_elim") {
                 isDoubleElimPlayoffs = true;
                 const de = buildDoubleElimPlayoffs(
-                    playoffSize >= 16 ? 16 : 8,
-                    startDate,
-                    currentDayOffset,
-                    defaultFormat,
-                    finalFormat,
-                    isDoubleElimQuali
+                    playoffSize >= 16 ? 16 : 8, startDate, currentDayOffset, defaultFormat, finalFormat, isDoubleElimQuali
                 );
                 playoffRounds = de.rounds;
                 if (de.isQualifierOnly) deQualiMeta = de;
             } else {
                 playoffRounds = buildSingleElimPlayoffs(playoffSize, {
-                    startDate,
-                    dayOffset: currentDayOffset,
-                    matchesPerDay,
-                    defaultFormat,
-                    finalFormat,
-                    directInvites,
-                    isQuali32
+                    startDate, dayOffset: currentDayOffset, matchesPerDay, defaultFormat, finalFormat, directInvites, isQuali32
                 });
             }
         }
@@ -487,6 +473,9 @@ export function createTournamentsModule(deps) {
         if (!hasStage1 && hasPlayoffs) totalTeams = isQuali32 ? 32 : playoffSize;
         if (!hasStage1 && !hasPlayoffs && hasPlayIn) totalTeams = playInMatches * 2;
         if (totalTeams === 0) totalTeams = 16;
+
+        const computedEndDate = addDaysISO(startDate, Math.max(0, currentDayOffset - 1));
+        const endDate = /^\d{4}-\d{2}-\d{2}$/.test(cfg.endDate || "") ? cfg.endDate : computedEndDate;
 
         const prizeTotal = Number(cfg.prizePoolTotal) || 0;
         const prizeDistribution = [];
@@ -502,24 +491,18 @@ export function createTournamentsModule(deps) {
         if (cfg.travelNotice?.trim() || cfg.nextTournamentId) {
             const nextT = cfg.nextTournamentId ? getTournamentById(cfg.nextTournamentId) : null;
             notices.push({
-                type: "warning",
-                icon: "✈️",
-                title: "Reise- & Folge-Turnier-Hinweis",
+                type: "warning", icon: "✈️", title: "Reise- & Folge-Turnier-Hinweis",
                 text: cfg.travelNotice?.trim() || "Die Gewinner qualifizieren sich für das verknüpfte Folge-Turnier.",
-                linkTournamentId: nextT ? nextT.id : "",
-                linkLabel: nextT ? `→ Zu ${nextT.name}` : ""
+                linkTournamentId: nextT ? nextT.id : "", linkLabel: nextT ? `→ Zu ${nextT.name}` : ""
             });
         }
         if (cfg.predecessorId) {
             const predT = getTournamentById(cfg.predecessorId);
             if (predT) {
                 notices.push({
-                    type: "neutral",
-                    icon: "🏆",
-                    title: "Automatische Qualifikation",
+                    type: "neutral", icon: "🏆", title: "Automatische Qualifikation",
                     text: `Qualifizierte Teams aus „${predT.name}“ werden automatisch übernommen.`,
-                    linkTournamentId: predT.id,
-                    linkLabel: `← Zum Vorgängerturnier: ${predT.name}`
+                    linkTournamentId: predT.id, linkLabel: `← Zum Vorgängerturnier: ${predT.name}`
                 });
             }
         }
@@ -550,46 +533,32 @@ export function createTournamentsModule(deps) {
         }
         if (hasPlayIn) stageParts.push(`Play-In (${playInMatches} Matches)`);
         if (hasPlayoffs) {
-            if (isDoubleElimQuali) {
-                stageParts.push(`Double-Elim Play-In / Quali (16 Teams → 8 weiter, 20 Matches)`);
-            } else {
-                stageParts.push(`${isDoubleElimPlayoffs ? "Double-Elim" : "Single-Elim"} ${playoffSize}er Playoffs${directInvites > 0 ? ` (${directInvites} Direkt-Einladungen)` : ""}`);
-            }
+            if (isDoubleElimQuali) stageParts.push(`Double-Elim Play-In / Quali (16 Teams → 8 weiter, 20 Matches)`);
+            else stageParts.push(`${isDoubleElimPlayoffs ? "Double-Elim" : "Single-Elim"} ${playoffSize}er Playoffs${directInvites > 0 ? ` (${directInvites} Direkt-Einladungen)` : ""}`);
         }
 
         const matchFormatSummary = defaultFormat === finalFormat ? `Best of ${defaultFormat.slice(2)} (${defaultFormat})` : `${defaultFormat} (Finale: ${finalFormat})`;
+        const statusInput = cfg.status || "auto";
 
         return {
             id: cfg.id || `t-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             name: cfg.name.trim(),
-            status: cfg.status || "zukuenftig",
+            statusMode: statusInput === "auto" ? "auto" : "manual",
+            status: statusInput,
             startDate,
+            endDate,
             matchesPerDay,
             maxTeams: totalTeams,
-            hasStage1,
-            stage1Type,
-            groupCount,
-            groupSize,
-            advancePerGroup,
-            hasPlayIn,
-            playInMatches,
-            hasPlayoffs,
-            playoffType,
-            isDoubleElimQuali,
-            deQualiMeta,
-            playoffSize,
-            directInvites,
-            isQuali32,
-            isDoubleElimPlayoffs,
+            hasStage1, stage1Type, groupCount, groupSize, advancePerGroup,
+            hasPlayIn, playInMatches,
+            hasPlayoffs, playoffType, isDoubleElimQuali, deQualiMeta,
+            playoffSize, directInvites, isQuali32, isDoubleElimPlayoffs,
             onlineDates: cfg.onlineDates.trim(),
             onlineRegion: cfg.onlineRegion.trim(),
             lanDates: (cfg.lanDates || "").trim(),
             lanLocation: (cfg.lanLocation || "").trim(),
             travelWindow: (cfg.travelWindow || "").trim(),
-            defaultFormat,
-            deciderFormat,
-            finalFormat,
-            matchFormatSummary,
+            defaultFormat, deciderFormat, finalFormat, matchFormatSummary,
             formatSummary: `${stageParts.join(" → ") || "Turnier"} (${matchFormatSummary})`,
             inviteSummary: (cfg.inviteSummary || `Top ${totalTeams} Teams`).trim(),
             nextTournamentId: cfg.nextTournamentId || "",
@@ -597,11 +566,7 @@ export function createTournamentsModule(deps) {
             prizePoolTotal: prizeTotal,
             prizeDistribution,
             notices,
-            swissGroups,
-            deGroups,
-            rrGroups,
-            playInStage,
-            rounds: playoffRounds,
+            swissGroups, deGroups, rrGroups, playInStage, rounds: playoffRounds,
             participants: cfg.existingParticipants || [],
             matches: cfg.existingMatches || {},
             matchSchedules: cfg.existingMatchSchedules || {},
@@ -615,13 +580,15 @@ export function createTournamentsModule(deps) {
         return [];
     }
 
-    // ==================== TURNIER-GRAPH AUFLÖSEN ====================
+    // ==================== TURNIER-GRAPH AUFLÖSEN (MIT SPOILER-SCHUTZ) ====================
     function resolveTournamentGraph(tournament, visited = new Set()) {
         if (!tournament || visited.has(tournament.id)) {
             return { participants: [], autoSlots: [], matchSlots: {}, matchWinners: {}, matchSchedules: {}, swissStandings: {}, rrStandings: {}, stageAdvancers: [] };
         }
         visited.add(tournament.id);
 
+        const hideSpoilers = !isAdmin();
+        const gDate = currentGameDate();
         const manual = Array.isArray(tournament.participants) ? tournament.participants : [];
         const matchesMap = tournament.matches || {};
         const winnersMap = tournament.winners || {};
@@ -661,11 +628,33 @@ export function createTournamentsModule(deps) {
         const matchSlots = {};
         const matchWinners = {};
 
-        const resolveMatch = (m, groupSlice = []) => {
+        const isMatchFinishedForView = (m, fallbackIso = "") => {
+            if (!hideSpoilers) return true;
+            const mIso = matchSchedules[m.id]?.date || m.defaultDateISO || fallbackIso || tournament.startDate || "";
+            return Boolean(mIso && gDate && mIso < gDate);
+        };
+
+        const resolveMatch = (m, groupSlice = [], roundReady = true, fallbackIso = "") => {
             const stored = matchesMap[m.id];
             const row = [null, null];
+
             for (let s = 0; s < 2; s++) {
-                if (Array.isArray(stored) && stored[s] !== undefined && stored[s] !== null) {
+                if (hideSpoilers && !roundReady) {
+                    row[s] = null;
+                    continue;
+                }
+
+                let feedFinished = true;
+                if (hideSpoilers) {
+                    if (Array.isArray(m.fromMatches) && m.fromMatches[s]) feedFinished = Boolean(matchWinners[m.fromMatches[s]]);
+                    else if (Array.isArray(m.fromLosers) && m.fromLosers[s]) feedFinished = Boolean(matchWinners[m.fromLosers[s]]);
+                    else if (Array.isArray(m.fromMixed) && m.fromMixed[s]) feedFinished = Boolean(matchWinners[m.fromMixed[s].id]);
+                    else if (Array.isArray(m.fromPredecessor) && m.fromPredecessor[s] && predGraph) feedFinished = Boolean(predGraph.matchWinners[m.fromPredecessor[s]]);
+                }
+
+                if (!feedFinished) {
+                    row[s] = null;
+                } else if (Array.isArray(stored) && stored[s] !== undefined && stored[s] !== null) {
                     row[s] = stored[s];
                 } else if (Array.isArray(m.initialSlotIndices) && groupSlice[m.initialSlotIndices[s]]) {
                     row[s] = groupSlice[m.initialSlotIndices[s]].uid;
@@ -682,10 +671,12 @@ export function createTournamentsModule(deps) {
                 } else if (Array.isArray(m.fromPredecessor) && m.fromPredecessor[s] && predGraph) {
                     row[s] = predGraph.matchWinners[m.fromPredecessor[s]] || null;
                 }
+
                 if (row[s] && !seen.has(row[s])) row[s] = null;
             }
+
             matchSlots[m.id] = row;
-            const rawW = winnersMap[m.id] || null;
+            const rawW = isMatchFinishedForView(m, fallbackIso) ? (winnersMap[m.id] || null) : null;
             matchWinners[m.id] = (rawW && (rawW === row[0] || rawW === row[1])) ? rawW : null;
         };
 
@@ -693,24 +684,35 @@ export function createTournamentsModule(deps) {
         const rrStandings = {};
         const stageAdvancers = [];
 
-        // 1. Swiss
+        // 1. Swiss (Vorrunde muss beendet sein, bevor nächste Runde Spielern angezeigt wird)
         (tournament.swissGroups || []).forEach((g, gIdx) => {
             const gTeams = participants.slice(gIdx * g.teamCount, (gIdx + 1) * g.teamCount);
             const table = {};
             gTeams.forEach((p, idx) => { table[p.uid] = { uid: p.uid, seed: idx + 1, wins: 0, losses: 0, opponents: new Set() }; });
-            g.rounds.forEach(r => r.matches.forEach(m => {
-                resolveMatch(m);
-                const sl = matchSlots[m.id], w = matchWinners[m.id];
-                if (sl[0] && sl[1]) {
-                    if (table[sl[0]]) table[sl[0]].opponents.add(sl[1]);
-                    if (table[sl[1]]) table[sl[1]].opponents.add(sl[0]);
+
+            g.rounds.forEach((r, rIdx) => {
+                let roundReady = true;
+                if (hideSpoilers && rIdx > 0) {
+                    const prevR = g.rounds[rIdx - 1];
+                    const prevDates = (prevR.matches || []).map(pm => matchSchedules[pm.id]?.date || pm.defaultDateISO || prevR.dateISO).filter(Boolean).sort();
+                    const prevEnd = prevDates[prevDates.length - 1] || prevR.dateISO || "";
+                    roundReady = Boolean(prevEnd && gDate && prevEnd < gDate);
                 }
-                if (w && sl[0] && sl[1]) {
-                    const l = w === sl[0] ? sl[1] : sl[0];
-                    if (table[w]) table[w].wins++;
-                    if (table[l]) table[l].losses++;
-                }
-            }));
+                r.matches.forEach(m => {
+                    resolveMatch(m, [], roundReady, r.dateISO || "");
+                    const sl = matchSlots[m.id], w = matchWinners[m.id];
+                    if (sl[0] && sl[1]) {
+                        if (table[sl[0]]) table[sl[0]].opponents.add(sl[1]);
+                        if (table[sl[1]]) table[sl[1]].opponents.add(sl[0]);
+                    }
+                    if (w && sl[0] && sl[1]) {
+                        const l = w === sl[0] ? sl[1] : sl[0];
+                        if (table[w]) table[w].wins++;
+                        if (table[l]) table[l].losses++;
+                    }
+                });
+            });
+
             const sorted = Object.values(table).sort((a, b) => (b.wins - b.losses) - (a.wins - a.losses) || b.wins - a.wins || a.losses - b.losses || a.seed - b.seed);
             swissStandings[g.id] = sorted;
             sorted.filter(row => row.wins >= g.winsToAdvance).forEach(row => stageAdvancers.push(row.uid));
@@ -730,7 +732,7 @@ export function createTournamentsModule(deps) {
             const table = {};
             gTeams.forEach((p, idx) => { table[p.uid] = { uid: p.uid, seed: idx + 1, played: 0, wins: 0, losses: 0, points: 0 }; });
             g.rounds.forEach(r => r.matches.forEach(m => {
-                resolveMatch(m, gTeams);
+                resolveMatch(m, gTeams, true, r.dateISO || "");
                 const sl = matchSlots[m.id], w = matchWinners[m.id];
                 if (w && sl[0] && sl[1]) {
                     const l = w === sl[0] ? sl[1] : sl[0];
@@ -745,14 +747,14 @@ export function createTournamentsModule(deps) {
 
         // 4. Play-In
         if (tournament.playInStage) {
-            tournament.playInStage.rounds.forEach(r => r.days.forEach(d => d.matches.forEach(m => resolveMatch(m))));
+            tournament.playInStage.rounds.forEach(r => r.days.forEach(d => d.matches.forEach(m => resolveMatch(m, [], true, d.dateISO || ""))));
             (tournament.playInStage.qualifierMatchIds || []).forEach(qId => {
                 if (matchWinners[qId]) stageAdvancers.push(matchWinners[qId]);
             });
         }
 
         // 5. Playoffs
-        (tournament.rounds || []).forEach(r => r.days.forEach(d => d.matches.forEach(m => resolveMatch(m))));
+        (tournament.rounds || []).forEach(r => r.days.forEach(d => d.matches.forEach(m => resolveMatch(m, [], true, d.dateISO || ""))));
 
         // 6. Double Elim Qualifier / Quali32 Qualifikanten
         if (tournament.isDoubleElimQuali && tournament.deQualiMeta?.qualifierMatchIds) {
@@ -775,13 +777,7 @@ export function createTournamentsModule(deps) {
         return list.map((item, idx) => {
             const name = String(item[0]);
             counts[name] = (counts[name] || 0) + 1;
-            return {
-                uid: `vrs:${name}#${counts[name]}`,
-                rank: idx + 1,
-                name,
-                points: Number(item[1]) || 0,
-                region: item[2] ? String(item[2]) : ""
-            };
+            return { uid: `vrs:${name}#${counts[name]}`, rank: idx + 1, name, points: Number(item[1]) || 0, region: item[2] ? String(item[2]) : "" };
         });
     }
 
@@ -836,16 +832,30 @@ export function createTournamentsModule(deps) {
         const sched = graph.matchSchedules?.[match.id] || {};
         const matchDateISO = sched.date || match.defaultDateISO || "";
         const matchTime = sched.time || match.time || "";
-        const displayDateLabel = sched.date
-            ? formatDateDE(sched.date)
-            : (dayEdited && defaultDateLabel ? defaultDateLabel : (matchDateISO ? formatDateDE(matchDateISO) : defaultDateLabel));
+        const tzKey = getTimezone?.() || "europe";
+        const conv = convertFromBaseTimezone(matchDateISO, matchTime, tzKey);
 
-        const scheduleMarkup = admin
-            ? `<div class="match-admin-schedule">
-                   <input type="date" class="match-date-input" data-action="set-match-date" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" value="${esc(matchDateISO)}" title="Spieldatum ändern">
-                   <input type="time" class="match-time-input" data-action="set-match-time" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" value="${esc(matchTime)}" title="Spielzeit ändern">
-               </div>`
-            : `<span class="match-date-pill">${esc(displayDateLabel)}${matchTime ? ` · ${esc(matchTime)} Uhr` : ""}</span>`;
+        let scheduleMarkup = "";
+        if (admin) {
+            const previewHtml = (tzKey !== "europe" && matchTime)
+                ? `<div class="match-tz-preview">${esc(conv.tzLabel)}: ${esc(formatDateDE(conv.dateISO))} · ${esc(conv.timeStr)}</div>`
+                : "";
+            scheduleMarkup = `
+                <div style="display:flex; flex-direction:column; align-items:flex-end;">
+                    <div class="match-admin-schedule">
+                        <input type="date" class="match-date-input" data-action="set-match-date" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" value="${esc(matchDateISO)}" title="Spieldatum (Basis: Europa UTC+1)">
+                        <input type="time" class="match-time-input" data-action="set-match-time" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" value="${esc(matchTime)}" title="Spielzeit (Basis: Europa UTC+1)">
+                    </div>
+                    ${previewHtml}
+                </div>
+            `;
+        } else {
+            const displayDate = (sched.date || (matchTime && tzKey !== "europe"))
+                ? formatDateDE(conv.dateISO)
+                : (dayEdited && defaultDateLabel ? defaultDateLabel : (conv.dateISO ? formatDateDE(conv.dateISO) : defaultDateLabel));
+            const timePart = conv.timeStr ? ` · ${esc(conv.timeStr)} (${esc(conv.tzLabel)})` : "";
+            scheduleMarkup = `<span class="match-date-pill">${esc(displayDate)}${timePart}</span>`;
+        }
 
         return `
             <div class="match-card">
@@ -994,19 +1004,13 @@ export function createTournamentsModule(deps) {
 
         const cols = rounds.map((r, rIdx) => {
             const flat = flatRound(r);
-            const isFirst = rIdx === 0;
-            const isFinal = rIdx === rounds.length - 1;
+            const isFirst = rIdx === 0, isFinal = rIdx === rounds.length - 1;
             const cards = flat.map(it => {
                 const pref = Array.isArray(it.m.fromMatches) ? [...(graph.matchSlots[it.m.fromMatches[0]] || []), ...(graph.matchSlots[it.m.fromMatches[1]] || [])].filter(Boolean) : [];
                 const card = renderMatchCard(t.id, it.m, it.d.dateLabel, it.fmt, graph, admin, pref, it.d.dateEdited);
                 return (isFirst && t.playoffSize !== 6) ? card : `<div class="classic-round-slot">${card}</div>`;
             }).join("");
-
-            let conn = "";
-            if (!isFinal) {
-                const connCount = t.playoffSize === 6 && rIdx === 0 ? 2 : Math.max(1, flat.length / 2);
-                conn = `<div class="classic-col-conn">${Array.from({ length: connCount }, () => '<div class="bracket-connector"></div>').join("")}</div>`;
-            }
+            const conn = isFinal ? "" : `<div class="classic-col-conn">${Array.from({ length: t.playoffSize === 6 && rIdx === 0 ? 2 : Math.max(1, flat.length / 2) }, () => '<div class="bracket-connector"></div>').join("")}</div>`;
             return `<div class="classic-col-round ${isFinal ? "classic-col-final" : ""}">${cards}</div>${conn}`;
         }).join("");
 
@@ -1036,9 +1040,7 @@ export function createTournamentsModule(deps) {
             const slots = Array.from({ length: expectedCount }, (_, i) => {
                 const row = teams[i];
                 const info = row ? getResolvedParticipant(row.uid, graph.participants) : null;
-                return info
-                    ? `<div class="swiss-outcome-team">${info.icon} ${esc(info.displayName)}</div>`
-                    : `<div class="swiss-outcome-team empty">TBD</div>`;
+                return info ? `<div class="swiss-outcome-team">${info.icon} ${esc(info.displayName)}</div>` : `<div class="swiss-outcome-team empty">TBD</div>`;
             }).join("");
             return `<div class="swiss-outcome-box ${cls}"><div class="swiss-outcome-title">${esc(title)}</div>${slots}</div>`;
         };
@@ -1065,54 +1067,20 @@ export function createTournamentsModule(deps) {
                 </div>
             `;
 
-            let colsHtml = "";
-            if (g.teamCount >= 16 && r.length >= 5) {
-                // 16er Swiss (Screenshot 4)
-                colsHtml = `
-                    <div class="swiss-col">
-                        ${makeHead(r[0], 0)}
-                        ${renderBucket("0:0", "8 Matches", "", r[0].matches.slice(0, 8), r[0])}
-                    </div>
-                    <div class="swiss-col">
-                        ${makeHead(r[1], 1)}
-                        ${renderBucket("1:0", "↗ Sieger R1", "bucket-win", r[1].matches.slice(0, 4), r[1])}
-                        ${renderBucket("0:1", "↘ Verlierer R1", "bucket-loss", r[1].matches.slice(4, 8), r[1])}
-                    </div>
-                    <div class="swiss-col">
-                        ${makeHead(r[2], 2)}
-                        ${renderBucket("2:0", "↗ Quali-Matches", "bucket-win", r[2].matches.slice(0, 2), r[2])}
-                        ${renderBucket("1:1", "Mitte", "", r[2].matches.slice(2, 6), r[2])}
-                        ${renderBucket("0:2", "↘ K.-o.-Matches", "bucket-loss", r[2].matches.slice(6, 8), r[2])}
-                    </div>
-                    <div class="swiss-col">
-                        ${makeHead(r[3], 3)}
-                        ${makeOutcomeBox("✅ 3:0 Weiter", "qualified", byRecord(3, 0), 2)}
-                        ${renderBucket("2:1", "↗ Quali-Matches", "bucket-win", r[3].matches.slice(0, 3), r[3])}
-                        ${renderBucket("1:2", "↘ K.-o.-Matches", "bucket-loss", r[3].matches.slice(3, 6), r[3])}
-                        ${makeOutcomeBox("❌ 0:3 Raus", "eliminated", byRecord(0, 3), 2)}
-                    </div>
-                    <div class="swiss-col">
-                        ${makeHead(r[4], 4)}
-                        <div class="swiss-outcome-split">
-                            ${makeOutcomeBox("✅ 3:1", "qualified", byRecord(3, 1), 3)}
-                            ${makeOutcomeBox("✅ 3:2", "qualified", byRecord(3, 2), 3)}
-                        </div>
-                        ${renderBucket("2:2", "Entscheidung", "bucket-decider", r[4].matches.slice(0, 3), r[4])}
-                        <div class="swiss-outcome-split">
-                            ${makeOutcomeBox("❌ 1:3", "eliminated", byRecord(1, 3), 3)}
-                            ${makeOutcomeBox("❌ 2:3", "eliminated", byRecord(2, 3), 3)}
-                        </div>
-                    </div>
-                `;
-            } else {
-                // 8er Swiss (3 Runden)
-                colsHtml = `
+            const colsHtml = g.teamCount >= 16 && r.length >= 5
+                ? `
+                    <div class="swiss-col">${makeHead(r[0], 0)}${renderBucket("0:0", "8 Matches", "", r[0].matches.slice(0, 8), r[0])}</div>
+                    <div class="swiss-col">${makeHead(r[1], 1)}${renderBucket("1:0", "↗ Sieger R1", "bucket-win", r[1].matches.slice(0, 4), r[1])}${renderBucket("0:1", "↘ Verlierer R1", "bucket-loss", r[1].matches.slice(4, 8), r[1])}</div>
+                    <div class="swiss-col">${makeHead(r[2], 2)}${renderBucket("2:0", "↗ Quali-Matches", "bucket-win", r[2].matches.slice(0, 2), r[2])}${renderBucket("1:1", "Mitte", "", r[2].matches.slice(2, 6), r[2])}${renderBucket("0:2", "↘ K.-o.-Matches", "bucket-loss", r[2].matches.slice(6, 8), r[2])}</div>
+                    <div class="swiss-col">${makeHead(r[3], 3)}${makeOutcomeBox("✅ 3:0 Weiter", "qualified", byRecord(3, 0), 2)}${renderBucket("2:1", "↗ Quali-Matches", "bucket-win", r[3].matches.slice(0, 3), r[3])}${renderBucket("1:2", "↘ K.-o.-Matches", "bucket-loss", r[3].matches.slice(3, 6), r[3])}${makeOutcomeBox("❌ 0:3 Raus", "eliminated", byRecord(0, 3), 2)}</div>
+                    <div class="swiss-col">${makeHead(r[4], 4)}<div class="swiss-outcome-split">${makeOutcomeBox("✅ 3:1", "qualified", byRecord(3, 1), 3)}${makeOutcomeBox("✅ 3:2", "qualified", byRecord(3, 2), 3)}</div>${renderBucket("2:2", "Entscheidung", "bucket-decider", r[4].matches.slice(0, 3), r[4])}<div class="swiss-outcome-split">${makeOutcomeBox("❌ 1:3", "eliminated", byRecord(1, 3), 3)}${makeOutcomeBox("❌ 2:3", "eliminated", byRecord(2, 3), 3)}</div></div>
+                `
+                : `
                     <div class="swiss-col">${makeHead(r[0], 0)}${renderBucket("0:0", "4 Matches", "", r[0].matches.slice(0, 4), r[0])}</div>
                     <div class="swiss-col">${makeHead(r[1], 1)}${renderBucket("1:0", "↗ Sieger R1", "bucket-win", r[1].matches.slice(0, 2), r[1])}${renderBucket("0:1", "↘ Verlierer R1", "bucket-loss", r[1].matches.slice(2, 4), r[1])}</div>
                     <div class="swiss-col">${makeHead(r[2], 2)}${makeOutcomeBox("✅ 2:0 Weiter", "qualified", byRecord(2, 0), 2)}${renderBucket("1:1", "Entscheidung", "bucket-decider", r[2].matches.slice(0, 2), r[2])}${makeOutcomeBox("❌ 0:2 Raus", "eliminated", byRecord(0, 2), 2)}</div>
                     <div class="swiss-col"><div class="swiss-col-head"><strong>Endergebnis</strong><small>2:1 / 1:2</small></div>${makeOutcomeBox("✅ 2:1 Weiter", "qualified", byRecord(2, 1), 2)}${makeOutcomeBox("❌ 1:2 Raus", "eliminated", byRecord(1, 2), 2)}</div>
                 `;
-            }
 
             const standingRows = standings.map((row, idx) => {
                 const info = getResolvedParticipant(row.uid, graph.participants);
@@ -1151,7 +1119,6 @@ export function createTournamentsModule(deps) {
             const dateBtn = (roundName, curDate) => admin
                 ? `<button type="button" class="btn btn-secondary btn-small" style="padding:2px 6px; font-size:.72rem;" data-action="edit-date-label" data-path-type="gsl-round" data-tournament-id="${esc(t.id)}" data-target-id="${esc(g.id)}" data-round-name="${esc(roundName)}" data-current-val="${esc(curDate || "")}" title="Datum bearbeiten">✏️</button>`
                 : "";
-
             const pref = (ids) => ids.flatMap(id => graph.matchSlots[id] || []).filter(Boolean);
 
             let bodyHtml = "";
@@ -1239,7 +1206,6 @@ export function createTournamentsModule(deps) {
             `;
         }).join("");
     }
-
     function renderRoundRobinTab(t, graph, admin) {
         return (t.rrGroups || []).map(g => {
             const standingRows = (graph.rrStandings[g.id] || []).map((row, idx) => {
@@ -1254,7 +1220,7 @@ export function createTournamentsModule(deps) {
                         <strong>${esc(r.name)} (${esc(r.dateLabel)})</strong>
                         <div style="display:flex; gap:6px; align-items:center;">
                             <span>${r.matches.length} Matches</span>
-                            ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="rr-round" data-tournament-id="${esc(t.id)}" data-target-id="${esc(g.id)}" data-sub-index="${rIdx}" data-current-val="${esc(r.dateLabel)}" title="Datum manuell bearbeiten">✏️ Datum</button>` : ""}
+                            ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="rr-round" data-tournament-id="${esc(t.id)}" data-target-id="${esc(g.id)}" data-sub-index="${rIdx}" data-current-val="${esc(r.dateLabel)}" title="Datum bearbeiten">✏️</button>` : ""}
                         </div>
                     </div>
                     ${r.matches.map(m => renderMatchCard(t.id, m, r.dateLabel, m.format, graph, admin, [], r.dateEdited)).join("")}
@@ -1290,7 +1256,7 @@ export function createTournamentsModule(deps) {
                             <div><strong>${esc(d.dateLabel)}</strong></div>
                             <div style="display:flex; gap:6px; align-items:center;">
                                 <span>${d.matches.length} Matches</span>
-                                ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="playin-day" data-tournament-id="${esc(t.id)}" data-target-id="${esc(r.id)}" data-sub-index="${dIdx}" data-current-val="${esc(d.dateLabel)}" title="Datum manuell bearbeiten">✏️ Datum</button>` : ""}
+                                ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="playin-day" data-tournament-id="${esc(t.id)}" data-target-id="${esc(r.id)}" data-sub-index="${dIdx}" data-current-val="${esc(d.dateLabel)}" title="Datum bearbeiten">✏️</button>` : ""}
                             </div>
                         </div>
                         ${d.matches.map(m => renderMatchCard(t.id, m, d.dateLabel, m.format, graph, admin, [], d.dateEdited)).join("")}
@@ -1318,7 +1284,7 @@ export function createTournamentsModule(deps) {
                     <div><strong>${esc(d.dateLabel)}</strong></div>
                     <div style="display:flex; gap:6px; align-items:center;">
                         <span>${d.matches.length} Matches</span>
-                        ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="round-day" data-tournament-id="${esc(t.id)}" data-target-id="${esc(round.id)}" data-sub-index="${dIdx}" data-current-val="${esc(d.dateLabel)}" title="Datum manuell bearbeiten">✏️ Datum</button>` : ""}
+                        ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="round-day" data-tournament-id="${esc(t.id)}" data-target-id="${esc(round.id)}" data-sub-index="${dIdx}" data-current-val="${esc(d.dateLabel)}" title="Datum bearbeiten">✏️</button>` : ""}
                     </div>
                 </div>
                 ${d.matches.map(m => renderMatchCard(t.id, m, d.dateLabel, m.format || fmt, graph, admin, [], d.dateEdited)).join("")}
@@ -1394,7 +1360,7 @@ export function createTournamentsModule(deps) {
                         </div>
                     </div>
                     <div class="assign-grid">
-                        <div class="assign-card"><label>Spieler-Team zuweisen</label><div class="assign-row"><select id="tournament-player-select">${pOpts}</select><button type="button" class="btn btn-primary btn-small" data-action="add-player-team" data-tournament-id="${esc(t.id)}" ${full || !players.length ? "disabled" : ""}>Hinzufügen</button></div></div>
+                        <div class="assign-card"><label>Spieler-Team auswählen (für Hinzufügen oder 🔄 Ersetzen)</label><div class="assign-row"><select id="tournament-player-select">${pOpts}</select><button type="button" class="btn btn-primary btn-small" data-action="add-player-team" data-tournament-id="${esc(t.id)}" ${full || !players.length ? "disabled" : ""}>Hinzufügen</button></div></div>
                         <div class="assign-card"><label>VRS-Team zuweisen</label><div class="assign-row"><select id="tournament-vrs-date" style="max-width:135px;">${dOpts}</select><input type="text" id="tournament-vrs-search" placeholder="Team suchen..." value="${esc(vrsSearchTerm)}"></div><div class="assign-row"><select id="tournament-vrs-select">${vOpts}</select><button type="button" class="btn btn-accent btn-small" data-action="add-vrs-team" data-tournament-id="${esc(t.id)}" ${full || !selectedVrsDate ? "disabled" : ""}>Hinzufügen</button></div></div>
                     </div>
                 </div>
@@ -1404,7 +1370,10 @@ export function createTournamentsModule(deps) {
         const cards = parts.length
             ? parts.map((p, i) => {
                 const info = getResolvedParticipant(p.uid, parts);
-                return `<div class="participant-item ${p.autoQualified ? "auto" : ""}"><div class="participant-info"><strong>#${i + 1} ${info.icon} ${esc(info.displayName)}</strong><small>${esc(info.badgeText)}${p.region ? ` · ${esc(p.region)}` : ""}</small></div>${admin && !p.autoQualified ? `<button type="button" class="btn btn-danger btn-small" data-action="remove-participant" data-tournament-id="${esc(t.id)}" data-uid="${esc(p.uid)}">×</button>` : ""}</div>`;
+                const actions = admin && !p.autoQualified
+                    ? `<div style="display:flex; gap:4px;"><button type="button" class="btn btn-secondary btn-small" data-action="replace-participant" data-tournament-id="${esc(t.id)}" data-uid="${esc(p.uid)}" title="Durch oben ausgewähltes Spieler-Team ersetzen (Matches & Ergebnisse bleiben erhalten)">🔄</button><button type="button" class="btn btn-danger btn-small" data-action="remove-participant" data-tournament-id="${esc(t.id)}" data-uid="${esc(p.uid)}">×</button></div>`
+                    : "";
+                return `<div class="participant-item ${p.autoQualified ? "auto" : ""}"><div class="participant-info"><strong>#${i + 1} ${info.icon} ${esc(info.displayName)}</strong><small>${esc(info.badgeText)}${p.region ? ` · ${esc(p.region)}` : ""}</small></div>${actions}</div>`;
             }).join("")
             : "";
 
@@ -1413,7 +1382,8 @@ export function createTournamentsModule(deps) {
 
     function renderTournamentDetail(t) {
         const admin = isAdmin();
-        const badge = formatCategoryBadge(t.status);
+        const effStatus = getEffectiveStatus(t);
+        const badge = formatCategoryBadge(effStatus);
         const graph = resolveTournamentGraph(t);
         const parts = graph.participants;
 
@@ -1445,12 +1415,14 @@ export function createTournamentsModule(deps) {
             body = rIdx >= 0 ? renderRoundTab(t, t.rounds[rIdx], graph, admin, rIdx) : "";
         }
 
+        const selMode = t.statusMode === "manual" ? t.status : "auto";
         const adminHeaderBtns = admin ? `
             <div class="tournament-admin-status">
-                <select id="tournament-status-select" data-tournament-id="${esc(t.id)}" title="Status">
-                    <option value="zukuenftig" ${t.status === "zukuenftig" ? "selected" : ""}>🗓️ Zukünftig</option>
-                    <option value="laufend" ${t.status === "laufend" ? "selected" : ""}>🔴 Aktuell laufend</option>
-                    <option value="vergangen" ${t.status === "vergangen" ? "selected" : ""}>🏁 Vergangen</option>
+                <select id="tournament-status-select" data-tournament-id="${esc(t.id)}" title="Status-Modus">
+                    <option value="auto" ${selMode === "auto" ? "selected" : ""}>🔄 Auto (${effStatus})</option>
+                    <option value="zukuenftig" ${selMode === "zukuenftig" ? "selected" : ""}>🗓️ Manuell: Zukünftig</option>
+                    <option value="laufend" ${selMode === "laufend" ? "selected" : ""}>🔴 Manuell: Laufend</option>
+                    <option value="vergangen" ${selMode === "vergangen" ? "selected" : ""}>🏁 Manuell: Vergangen</option>
                 </select>
                 <button type="button" class="btn btn-secondary btn-small" data-action="edit-tournament" data-tournament-id="${esc(t.id)}">✏️ Bearbeiten</button>
                 <button type="button" class="btn btn-secondary btn-small" data-action="duplicate-tournament" data-tournament-id="${esc(t.id)}">📋 Duplizieren</button>
@@ -1502,7 +1474,7 @@ export function createTournamentsModule(deps) {
         const grouped = { laufend: [], zukuenftig: [], vergangen: [] };
 
         list.forEach(t => {
-            const st = counts[t.status] !== undefined ? t.status : "zukuenftig";
+            const st = getEffectiveStatus(t);
             counts[st]++;
             grouped[st].push(t);
         });
@@ -1510,7 +1482,7 @@ export function createTournamentsModule(deps) {
         const activeList = grouped[activeCategory] || [];
         const cardsHtml = activeList.length
             ? `<div class="tournament-list">${activeList.map(t => {
-                const badge = formatCategoryBadge(t.status);
+                const badge = formatCategoryBadge(getEffectiveStatus(t));
                 const graph = resolveTournamentGraph(t);
                 return `
                     <div class="tournament-card">
@@ -1619,8 +1591,9 @@ export function createTournamentsModule(deps) {
 
         if (existing) {
             setVal("te-name", isDuplicate ? `${existing.name} (Kopie)` : existing.name);
-            setVal("te-status", existing.status || "zukuenftig");
+            setVal("te-status", existing.statusMode === "manual" ? existing.status : "auto");
             setVal("te-start-date", existing.startDate || "2025-02-01");
+            setVal("te-end-date", existing.endDate || "");
             setVal("te-matches-per-day", existing.matchesPerDay || 4);
             setVal("te-online-dates", existing.onlineDates || "");
             setVal("te-online-region", existing.onlineRegion || "");
@@ -1686,8 +1659,9 @@ export function createTournamentsModule(deps) {
             const tObj = buildTournamentFromModularConfig({
                 id: existingId || undefined,
                 name: getVal("te-name"),
-                status: getVal("te-status", "zukuenftig"),
+                status: getVal("te-status", "auto"),
                 startDate: getVal("te-start-date", "2025-02-01"),
+                endDate: getVal("te-end-date"),
                 matchesPerDay: getVal("te-matches-per-day", "4"),
                 onlineDates: getVal("te-online-dates"),
                 onlineRegion: getVal("te-online-region"),
@@ -1728,7 +1702,7 @@ export function createTournamentsModule(deps) {
             });
 
             await saveTournamentDoc(tObj);
-            activeCategory = tObj.status;
+            activeCategory = getEffectiveStatus(tObj);
             closeEditor();
             render();
         });
@@ -1749,7 +1723,7 @@ export function createTournamentsModule(deps) {
 
             if (action === "open-tournament") {
                 const target = getTournamentById(el.dataset.tournamentId);
-                if (target) activeCategory = target.status || "zukuenftig";
+                if (target) activeCategory = getEffectiveStatus(target);
                 activeTournamentId = el.dataset.tournamentId;
                 activeSubTab = "";
                 render();
@@ -1793,6 +1767,34 @@ export function createTournamentsModule(deps) {
             clone.matches = clone.matches || {};
             clone.matchSchedules = clone.matchSchedules || {};
             clone.winners = clone.winners || {};
+
+            if (action === "replace-participant") {
+                const uidToReplace = el.dataset.uid;
+                const pUid = document.getElementById("tournament-player-select")?.value;
+                const player = getPlayers().find(p => p.uid === pUid);
+                if (!player) { alert("Bitte wähle oben im Dropdown zuerst ein Spieler-Team aus!"); return; }
+                const newUid = `player:${player.uid}`;
+                if (clone.participants.some(p => p.uid === newUid)) { alert("Dieses Spieler-Team ist bereits im Turnier!"); return; }
+
+                const pIdx = clone.participants.findIndex(p => p.uid === uidToReplace);
+                if (pIdx !== -1) {
+                    clone.participants[pIdx] = {
+                        uid: newUid,
+                        type: "player",
+                        playerUid: player.uid,
+                        username: player.username,
+                        name: getTeamName(player)
+                    };
+                }
+                for (const mId of Object.keys(clone.matches)) {
+                    clone.matches[mId] = (clone.matches[mId] || []).map(s => (s === uidToReplace ? newUid : s));
+                }
+                for (const mId of Object.keys(clone.winners)) {
+                    if (clone.winners[mId] === uidToReplace) clone.winners[mId] = newUid;
+                }
+                await saveTournamentDoc(clone);
+                return;
+            }
 
             if (action === "edit-date-label") {
                 const { pathType, targetId, roundName, subIndex, currentVal } = el.dataset;
@@ -1913,24 +1915,12 @@ export function createTournamentsModule(deps) {
                 if (!g) return;
                 const graph = resolveTournamentGraph(t);
                 const gTeams = graph.participants.slice(gIdx * g.teamCount, (gIdx + 1) * g.teamCount);
-                const active = rIdx === 0
-                    ? gTeams.map(p => ({ uid: p.uid, wins: 0, losses: 0, opponents: new Set() }))
-                    : (graph.swissStandings[gId] || []).filter(s => s.wins < g.winsToAdvance && s.losses < g.lossesToEliminate);
-
-                const bucketOrderByRound = g.teamCount >= 16
-                    ? [["0-0"], ["1-0", "0-1"], ["2-0", "1-1", "0-2"], ["2-1", "1-2"], ["2-2"]]
-                    : [["0-0"], ["1-0", "0-1"], ["1-1"]];
-                const bucketSizesByRound = g.teamCount >= 16
-                    ? [[8], [4, 4], [2, 4, 2], [3, 3], [3]]
-                    : [[4], [2, 2], [2]];
-
-                const order = bucketOrderByRound[rIdx] || [];
-                const sizes = bucketSizesByRound[rIdx] || [g.rounds[rIdx].matches.length];
-                let slotCursor = 0;
-
-                order.forEach((rec, bIdx) => {
-                    const pool = active.filter(s => `${s.wins}-${s.losses}` === rec);
-                    const pairs = [];
+                const active = rIdx === 0 ? gTeams.map(p => ({ uid: p.uid, wins: 0, losses: 0, opponents: new Set() })) : (graph.swissStandings[gId] || []).filter(s => s.wins < g.winsToAdvance && s.losses < g.lossesToEliminate);
+                const buckets = {};
+                active.forEach(s => { const k = `${s.wins}-${s.losses}`; if (!buckets[k]) buckets[k] = []; buckets[k].push(s); });
+                const pairs = [];
+                Object.keys(buckets).sort((a, b) => Number(b.split("-")[0]) - Number(a.split("-")[0])).forEach(k => {
+                    const pool = [...buckets[k]];
                     while (pool.length >= 2) {
                         const a = pool.shift();
                         let oppIdx = pool.findIndex(b => !a.opponents?.has(b.uid));
@@ -1938,13 +1928,8 @@ export function createTournamentsModule(deps) {
                         const [b] = pool.splice(oppIdx, 1);
                         pairs.push([a.uid, b.uid]);
                     }
-                    const slotCount = sizes[bIdx] || 0;
-                    for (let i = 0; i < slotCount; i++) {
-                        const m = g.rounds[rIdx].matches[slotCursor + i];
-                        if (m) clone.matches[m.id] = pairs[i] || [null, null];
-                    }
-                    slotCursor += slotCount;
                 });
+                g.rounds[rIdx].matches.forEach((m, idx) => { clone.matches[m.id] = pairs[idx] || [null, null]; });
             } else if (action === "fill-playin-from-stage1") {
                 const adv = resolveTournamentGraph(t).stageAdvancers;
                 const pi = t.playInStage;
@@ -2005,8 +1990,15 @@ export function createTournamentsModule(deps) {
                 const t = getTournamentById(e.target.dataset.tournamentId);
                 if (!t) return;
                 const clone = structuredClone(t);
-                clone.status = e.target.value;
-                activeCategory = clone.status;
+                const val = e.target.value;
+                if (val === "auto") {
+                    clone.statusMode = "auto";
+                    clone.status = getEffectiveStatus(clone);
+                } else {
+                    clone.statusMode = "manual";
+                    clone.status = val;
+                }
+                activeCategory = getEffectiveStatus(clone);
                 await saveTournamentDoc(clone);
                 return;
             }
