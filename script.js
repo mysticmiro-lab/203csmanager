@@ -37,13 +37,13 @@ const firebaseConfig = {
 
 const ADMIN_UID = "URaqNww1RjM87UWtqnFOS4zEaq13";
 const AUTH_EMAIL_DOMAIN = "hltvgame.local";
-const DEFAULT_RANKING_DATE = "2025-01-01";
+const DEFAULT_GAME_DATE = "2025-01-01";
+const TZ_STORAGE_KEY = "hltv_game_timezone";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Zweite Auth-Instanz, damit Admin neue Spieler anlegen kann ohne sich selbst auszuloggen
 const secondaryApp = initializeApp(firebaseConfig, "AdminUserCreator");
 const secondaryAuth = getAuth(secondaryApp);
 
@@ -58,10 +58,12 @@ let newsCache = [];
 let messagesCache = [];
 let tournamentsCache = [];
 let globalSettings = {
-    rankingDate: DEFAULT_RANKING_DATE,
+    gameDate: DEFAULT_GAME_DATE,
+    rankingDate: DEFAULT_GAME_DATE,
     tournamentsSeeded: false,
     newsSeeded: false
 };
+let currentTimezone = loadSavedTimezone();
 
 let settingsLoaded = false;
 let tournamentsLoaded = false;
@@ -76,6 +78,11 @@ function escapeHTML(str) {
     const div = document.createElement("div");
     div.textContent = String(str ?? "");
     return div.innerHTML;
+}
+
+function loadSavedTimezone() {
+    const saved = localStorage.getItem(TZ_STORAGE_KEY);
+    return (saved === "europe" || saved === "americas" || saved === "asia") ? saved : "europe";
 }
 
 function usernameToAuthEmail(input) {
@@ -103,6 +110,26 @@ function getVrsRankingsMap() {
     return {};
 }
 
+function getBestVrsDateForGameDate(gameDate) {
+    const map = getVrsRankingsMap();
+    if (Object.hasOwn(map, gameDate)) return gameDate;
+    const dates = Object.keys(map).sort();
+    if (dates.length === 0) return DEFAULT_GAME_DATE;
+    let best = dates[0];
+    for (const d of dates) {
+        if (d <= gameDate) best = d;
+        else break;
+    }
+    return best;
+}
+
+function addDaysISO(dateStr, delta) {
+    const base = /^\d{4}-\d{2}-\d{2}$/.test(dateStr || "") ? dateStr : DEFAULT_GAME_DATE;
+    const [y, m, d] = base.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d + delta));
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
 function formatDateDE(isoDate) {
     const dt = new Date(`${isoDate}T00:00:00Z`);
     if (Number.isNaN(dt.getTime())) return isoDate;
@@ -114,18 +141,10 @@ function translateFirebaseError(err) {
     if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
         return "Falscher Benutzername/E-Mail oder falsches Passwort!";
     }
-    if (code === "auth/email-already-in-use") {
-        return "Ein Auth-Konto mit diesem Benutzernamen existiert bereits in Firebase Auth.";
-    }
-    if (code === "auth/weak-password") {
-        return "Das Passwort muss mindestens 6 Zeichen lang sein.";
-    }
-    if (code === "auth/too-many-requests") {
-        return "Zu viele Versuche. Bitte kurz warten und erneut versuchen.";
-    }
-    if (code === "permission-denied") {
-        return "Keine Berechtigung (Firestore Security Rules prüfen).";
-    }
+    if (code === "auth/email-already-in-use") return "Ein Auth-Konto mit diesem Benutzernamen existiert bereits in Firebase Auth.";
+    if (code === "auth/weak-password") return "Das Passwort muss mindestens 6 Zeichen lang sein.";
+    if (code === "auth/too-many-requests") return "Zu viele Versuche. Bitte kurz warten und erneut versuchen.";
+    if (code === "permission-denied") return "Keine Berechtigung (Firestore Security Rules prüfen).";
     return err?.message || "Ein unbekannter Fehler ist aufgetreten.";
 }
 
@@ -135,7 +154,9 @@ const tournamentsModule = createTournamentsModule({
     getPlayers: () => playersCache,
     getTeamName,
     getVrsRankingsMap,
-    getSelectedRankingDate: () => globalSettings.rankingDate,
+    getSelectedRankingDate: () => getBestVrsDateForGameDate(globalSettings.gameDate),
+    getGameDate: () => globalSettings.gameDate,
+    getTimezone: () => currentTimezone,
     getTournamentsCache: () => tournamentsCache,
     saveTournamentDoc: async (tObj) => {
         const clean = JSON.parse(JSON.stringify(tObj));
@@ -158,6 +179,9 @@ document.addEventListener("DOMContentLoaded", () => {
     setupAppEvents();
     setupPasswordModalEvents();
     tournamentsModule.setup();
+
+    const tzSelect = document.getElementById("timezone-select");
+    if (tzSelect) tzSelect.value = currentTimezone;
 
     onAuthStateChanged(auth, async (fbUser) => {
         if (isSigningIn) return;
@@ -182,7 +206,7 @@ function resetStateOnLogout() {
     newsCache = [];
     messagesCache = [];
     tournamentsCache = [];
-    globalSettings = { rankingDate: DEFAULT_RANKING_DATE, tournamentsSeeded: false, newsSeeded: false };
+    globalSettings = { gameDate: DEFAULT_GAME_DATE, rankingDate: DEFAULT_GAME_DATE, tournamentsSeeded: false, newsSeeded: false };
     settingsLoaded = false;
     tournamentsLoaded = false;
     selectedTeamUid = null;
@@ -240,11 +264,24 @@ function startRealtimeListeners() {
 
     unsubscribers.push(onSnapshot(doc(db, "settings", "global"), async (snap) => {
         if (snap.exists()) {
-            globalSettings = { ...globalSettings, ...snap.data() };
+            const data = snap.data();
+            const gDate = data.gameDate || data.rankingDate || DEFAULT_GAME_DATE;
+            globalSettings = {
+                ...globalSettings,
+                ...data,
+                gameDate: gDate,
+                rankingDate: getBestVrsDateForGameDate(gDate)
+            };
         } else if (currentUser?.role === "admin") {
-            await setDoc(doc(db, "settings", "global"), { rankingDate: DEFAULT_RANKING_DATE, tournamentsSeeded: false, newsSeeded: false }, { merge: true });
+            await setDoc(doc(db, "settings", "global"), {
+                gameDate: DEFAULT_GAME_DATE,
+                rankingDate: DEFAULT_GAME_DATE,
+                tournamentsSeeded: false,
+                newsSeeded: false
+            }, { merge: true });
         }
         settingsLoaded = true;
+        renderGameDateUI();
         renderRanking();
         tournamentsModule.render();
         maybeSeedInitialTournaments();
@@ -307,17 +344,49 @@ async function maybeSeedInitialTournaments() {
     }
     seedingTournaments = true;
     try {
-        const batch = writeBatch(db);
-        for (const t of tournamentsModule.getInitialSeedTournaments()) {
-            const clean = JSON.parse(JSON.stringify(t));
-            batch.set(doc(db, "tournaments", clean.id), clean);
+        const list = tournamentsModule.getInitialSeedTournaments();
+        if (list.length > 0) {
+            const batch = writeBatch(db);
+            for (const t of list) {
+                const clean = JSON.parse(JSON.stringify(t));
+                batch.set(doc(db, "tournaments", clean.id), clean);
+            }
+            batch.set(doc(db, "settings", "global"), { tournamentsSeeded: true }, { merge: true });
+            await batch.commit();
+        } else {
+            await setDoc(doc(db, "settings", "global"), { tournamentsSeeded: true }, { merge: true });
         }
-        batch.set(doc(db, "settings", "global"), { tournamentsSeeded: true }, { merge: true });
-        await batch.commit();
     } catch (err) {
         console.error("Fehler beim Anlegen der Start-Turniere:", err);
     } finally {
         seedingTournaments = false;
+    }
+}
+
+async function setGlobalGameDate(newIso) {
+    if (currentUser?.role !== "admin" || !/^\d{4}-\d{2}-\d{2}$/.test(newIso)) return;
+    const bestVrs = getBestVrsDateForGameDate(newIso);
+    try {
+        await setDoc(doc(db, "settings", "global"), {
+            gameDate: newIso,
+            rankingDate: bestVrs
+        }, { merge: true });
+    } catch (err) {
+        alert(translateFirebaseError(err));
+    }
+}
+
+function renderGameDateUI() {
+    const label = formatDateDE(globalSettings.gameDate);
+    const topbarPill = document.getElementById("topbar-game-date");
+    if (topbarPill) topbarPill.textContent = `📅 ${label}`;
+
+    const adminDisplay = document.getElementById("admin-game-date-display");
+    if (adminDisplay) adminDisplay.textContent = label;
+
+    const adminInput = document.getElementById("admin-game-date-input");
+    if (adminInput && document.activeElement !== adminInput) {
+        adminInput.value = globalSettings.gameDate;
     }
 }
 
@@ -402,7 +471,9 @@ function showApp() {
     const isAdmin = currentUser.role === "admin";
     document.getElementById("admin-nav-li").classList.toggle("hidden", !isAdmin);
     document.getElementById("admin-news-creator").classList.toggle("hidden", !isAdmin);
+    document.getElementById("btn-advance-day")?.classList.toggle("hidden", !isAdmin);
 
+    renderGameDateUI();
     renderAdminPlayerList();
     renderTeamDirectory();
     renderRanking();
@@ -414,6 +485,28 @@ function showApp() {
 
 function setupAppEvents() {
     document.getElementById("logout-btn").addEventListener("click", logout);
+
+    // Globaler +1 Tag Button in Topbar & Kontrollen im Admin-Panel
+    document.getElementById("btn-advance-day")?.addEventListener("click", () => {
+        setGlobalGameDate(addDaysISO(globalSettings.gameDate, 1));
+    });
+    document.getElementById("admin-next-day-btn")?.addEventListener("click", () => {
+        setGlobalGameDate(addDaysISO(globalSettings.gameDate, 1));
+    });
+    document.getElementById("admin-prev-day-btn")?.addEventListener("click", () => {
+        setGlobalGameDate(addDaysISO(globalSettings.gameDate, -1));
+    });
+    document.getElementById("admin-set-date-btn")?.addEventListener("click", () => {
+        const val = document.getElementById("admin-game-date-input")?.value;
+        if (val) setGlobalGameDate(val);
+    });
+
+    // Zeitzonen-Umschalter (für alle Spieler)
+    document.getElementById("timezone-select")?.addEventListener("change", (e) => {
+        currentTimezone = e.target.value;
+        localStorage.setItem(TZ_STORAGE_KEY, currentTimezone);
+        tournamentsModule.render();
+    });
 
     document.getElementById("main-nav-list").addEventListener("click", (e) => {
         const btn = e.target.closest(".nav-item");
@@ -483,7 +576,7 @@ function setupAppEvents() {
         }
     });
 
-    // Admin Spielerliste: Punkte speichern / Entfernen
+    // Admin Spielerliste
     document.getElementById("admin-player-list").addEventListener("click", async (e) => {
         if (currentUser?.role !== "admin") return;
 
@@ -509,11 +602,8 @@ function setupAppEvents() {
         if (remBtn) {
             const { uid, username } = remBtn.dataset;
             if (!confirm(`Spieler „${username}“ wirklich entfernen? (Hinweis: Falls der Name neu vergeben werden soll, auch unter Firebase Console → Authentication → Users löschen.)`)) return;
-            try {
-                await deleteDoc(doc(db, "players", uid));
-            } catch (err) {
-                alert(translateFirebaseError(err));
-            }
+            try { await deleteDoc(doc(db, "players", uid)); }
+            catch (err) { alert(translateFirebaseError(err)); }
         }
     });
 
@@ -549,7 +639,7 @@ function setupAppEvents() {
         catch (err) { alert(translateFirebaseError(err)); }
     });
 
-    // News-Verwaltung
+    // News
     document.getElementById("news-form").addEventListener("submit", async (e) => {
         e.preventDefault();
         if (currentUser?.role !== "admin") return;
@@ -558,10 +648,10 @@ function setupAppEvents() {
         if (!title || !body) return;
         try {
             if (editingNewsId) {
-                await updateDoc(doc(db, "news", editingNewsId), { title, body, date: new Date().toLocaleDateString("de-DE"), author: currentUser.username });
+                await updateDoc(doc(db, "news", editingNewsId), { title, body, date: formatDateDE(globalSettings.gameDate), author: currentUser.username });
                 resetNewsEditor();
             } else {
-                await addDoc(collection(db, "news"), { title, body, author: currentUser.username, date: new Date().toLocaleDateString("de-DE"), createdAt: Date.now() });
+                await addDoc(collection(db, "news"), { title, body, author: currentUser.username, date: formatDateDE(globalSettings.gameDate), createdAt: Date.now() });
                 document.getElementById("news-form").reset();
             }
         } catch (err) { alert(translateFirebaseError(err)); }
@@ -619,14 +709,6 @@ function setupAppEvents() {
             if (fb) { fb.textContent = translateFirebaseError(err); fb.className = "rename-team-feedback error"; }
         }
     });
-
-    // Ranking-Datum (Admin)
-    document.getElementById("ranking-content")?.addEventListener("change", async (e) => {
-        if (e.target.id !== "ranking-date-select" || currentUser?.role !== "admin") return;
-        if (!Object.hasOwn(getVrsRankingsMap(), e.target.value)) return;
-        try { await setDoc(doc(db, "settings", "global"), { rankingDate: e.target.value }, { merge: true }); }
-        catch (err) { alert(translateFirebaseError(err)); }
-    });
 }
 
 // ==================== PASSWORT ÄNDERN ====================
@@ -634,16 +716,16 @@ function setupPasswordModalEvents() {
     const modal = document.getElementById("password-modal");
     const form = document.getElementById("change-password-form");
 
-    document.getElementById("open-password-modal-btn").addEventListener("click", () => {
-        form.reset();
-        document.getElementById("password-feedback").classList.add("hidden");
-        modal.classList.remove("hidden");
+    document.getElementById("open-password-modal-btn")?.addEventListener("click", () => {
+        form?.reset();
+        document.getElementById("password-feedback")?.classList.add("hidden");
+        modal?.classList.remove("hidden");
     });
-    document.getElementById("close-password-modal").addEventListener("click", closePasswordModal);
-    document.getElementById("cancel-password-modal").addEventListener("click", closePasswordModal);
-    modal.addEventListener("click", (e) => { if (e.target === modal) closePasswordModal(); });
+    document.getElementById("close-password-modal")?.addEventListener("click", closePasswordModal);
+    document.getElementById("cancel-password-modal")?.addEventListener("click", closePasswordModal);
+    modal?.addEventListener("click", (e) => { if (e.target === modal) closePasswordModal(); });
 
-    form.addEventListener("submit", async (e) => {
+    form?.addEventListener("submit", async (e) => {
         e.preventDefault();
         if (!auth.currentUser) return;
         const oldPw = document.getElementById("old-password").value;
@@ -668,15 +750,16 @@ function setupPasswordModalEvents() {
 
 function showPasswordFeedback(msg, type) {
     const fb = document.getElementById("password-feedback");
+    if (!fb) return;
     fb.textContent = msg;
     fb.className = `feedback-msg ${type}`;
     fb.classList.remove("hidden");
 }
 
 function closePasswordModal() {
-    document.getElementById("password-modal").classList.add("hidden");
-    document.getElementById("change-password-form").reset();
-    document.getElementById("password-feedback").classList.add("hidden");
+    document.getElementById("password-modal")?.classList.add("hidden");
+    document.getElementById("change-password-form")?.reset();
+    document.getElementById("password-feedback")?.classList.add("hidden");
 }
 
 // ==================== ANSICHTEN & RENDERING ====================
@@ -760,11 +843,14 @@ function openTeamDetails(uid, switchTab = true) {
     document.getElementById("team-stat-points").textContent = (Number(team.points) || 0).toLocaleString("de-DE");
 
     const rosterPanel = document.getElementById("team-roster-panel");
-    rosterPanel.innerHTML = roster.length
-        ? `<strong>Kader von ${escapeHTML(name)}</strong><ul class="team-roster-list">${roster.map(p => `<li>${escapeHTML(typeof p === "string" ? p : (p.name || p.username || "Spieler"))}</li>`).join("")}</ul>`
-        : `Noch keine Spieler im Kader von <strong>${escapeHTML(name)}</strong> eingetragen.`;
+    if (rosterPanel) {
+        rosterPanel.innerHTML = roster.length
+            ? `<strong>Kader von ${escapeHTML(name)}</strong><ul class="team-roster-list">${roster.map(p => `<li>${escapeHTML(typeof p === "string" ? p : (p.name || p.username || "Spieler"))}</li>`).join("")}</ul>`
+            : `Noch keine Spieler im Kader von <strong>${escapeHTML(name)}</strong> eingetragen.`;
+    }
 
     const actions = document.getElementById("team-manager-actions");
+    if (!actions) return;
     actions.replaceChildren();
     if (currentUser?.role === "player" && currentUser.uid === team.uid) {
         const form = document.createElement("form");
@@ -785,26 +871,20 @@ function renderRanking() {
     const target = document.getElementById("ranking-content");
     if (!target) return;
     const vrsMap = getVrsRankingsMap();
-    const dates = Object.keys(vrsMap).sort();
-    const date = Object.hasOwn(vrsMap, globalSettings.rankingDate) ? globalSettings.rankingDate : (dates[0] || DEFAULT_RANKING_DATE);
-
-    const controls = currentUser?.role === "admin" && dates.length > 0
-        ? `<div class="ranking-date-control"><label for="ranking-date-select">Aktives Ranking-Datum (nur Admin)</label><select id="ranking-date-select">${dates.map(d => `<option value="${escapeHTML(d)}" ${date === d ? "selected" : ""}>${escapeHTML(formatDateDE(d))}</option>`).join("")}</select></div>`
-        : "";
+    const date = getBestVrsDateForGameDate(globalSettings.gameDate);
 
     const playerTeams = playersCache.map(t => ({ name: getTeamName(t), manager: t.username, points: Number(t.points) || 0, official: false }));
     const officialTeams = (vrsMap[date] || []).map(([name, pts]) => ({ name, manager: "HLTV / VRS", points: Number(pts) || 0, official: true }));
     const all = [...playerTeams, ...officialTeams].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "de"));
 
     target.innerHTML = `
-        ${controls}
         <div class="ranking-table-wrap">
             <table class="ranking-table">
                 <thead><tr><th>Platz</th><th>Team</th><th>Art</th><th>Manager / Quelle</th><th>Punkte</th></tr></thead>
                 <tbody>${all.map((t, i) => `<tr><td>${i + 1}</td><td>${t.official ? "🏆" : "🛡️"} ${escapeHTML(t.name)}</td><td>${t.official ? "HLTV-Team" : "Spielerteam"}</td><td>${escapeHTML(t.manager)}</td><td><strong>${t.points.toLocaleString("de-DE")}</strong></td></tr>`).join("")}</tbody>
             </table>
         </div>
-        <p class="ranking-note">🏆 = offizielles HLTV-/VRS-Team · 🛡️ = Spielerteam. HLTV-Datenstand: ${escapeHTML(formatDateDE(date))}.</p>
+        <p class="ranking-note">🏆 = offizielles HLTV-/VRS-Team · 🛡️ = Spielerteam · Spieldatum: ${escapeHTML(formatDateDE(globalSettings.gameDate))} (VRS-Stand: ${escapeHTML(formatDateDE(date))}).</p>
     `;
 }
 
