@@ -1032,26 +1032,94 @@ export function createTournamentsModule(deps) {
     }
 
     function renderSwissTab(t, graph, admin) {
+        const makeOutcomeBox = (title, cls, teams, expectedCount) => {
+            const slots = Array.from({ length: expectedCount }, (_, i) => {
+                const row = teams[i];
+                const info = row ? getResolvedParticipant(row.uid, graph.participants) : null;
+                return info
+                    ? `<div class="swiss-outcome-team">${info.icon} ${esc(info.displayName)}</div>`
+                    : `<div class="swiss-outcome-team empty">TBD</div>`;
+            }).join("");
+            return `<div class="swiss-outcome-box ${cls}"><div class="swiss-outcome-title">${esc(title)}</div>${slots}</div>`;
+        };
+
+        const renderBucket = (label, hint, cls, matches, r) => `
+            <div class="swiss-bucket ${cls}">
+                <div class="swiss-bucket-head"><strong>${esc(label)}</strong><span>${esc(hint)}</span></div>
+                ${matches.map(m => renderMatchCard(t.id, m, r.dateLabel, m.format, graph, admin, [], r.dateEdited)).join("")}
+            </div>
+        `;
+
         return (t.swissGroups || []).map(g => {
-            const standingRows = (graph.swissStandings[g.id] || []).map((row, idx) => {
+            const standings = graph.swissStandings[g.id] || [];
+            const byRecord = (w, l) => standings.filter(s => s.wins === w && s.losses === l);
+            const r = g.rounds || [];
+
+            const makeHead = (roundObj, rIdx) => `
+                <div class="swiss-col-head">
+                    <div><strong>${esc(roundObj.name)}</strong><small>${esc(roundObj.dateLabel)}</small></div>
+                    <div style="display:flex; gap:4px; align-items:center;">
+                        ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="swiss-round" data-tournament-id="${esc(t.id)}" data-target-id="${esc(g.id)}" data-sub-index="${rIdx}" data-current-val="${esc(roundObj.dateLabel)}" title="Datum bearbeiten">✏️</button>` : ""}
+                        ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="pair-swiss-round" data-tournament-id="${esc(t.id)}" data-group-id="${esc(g.id)}" data-round-index="${rIdx}" ${graph.participants.length < 2 ? "disabled" : ""} title="Teams nach Bilanz paaren">⚡</button>` : ""}
+                    </div>
+                </div>
+            `;
+
+            let colsHtml = "";
+            if (g.teamCount >= 16 && r.length >= 5) {
+                // 16er Swiss (Screenshot 4)
+                colsHtml = `
+                    <div class="swiss-col">
+                        ${makeHead(r[0], 0)}
+                        ${renderBucket("0:0", "8 Matches", "", r[0].matches.slice(0, 8), r[0])}
+                    </div>
+                    <div class="swiss-col">
+                        ${makeHead(r[1], 1)}
+                        ${renderBucket("1:0", "↗ Sieger R1", "bucket-win", r[1].matches.slice(0, 4), r[1])}
+                        ${renderBucket("0:1", "↘ Verlierer R1", "bucket-loss", r[1].matches.slice(4, 8), r[1])}
+                    </div>
+                    <div class="swiss-col">
+                        ${makeHead(r[2], 2)}
+                        ${renderBucket("2:0", "↗ Quali-Matches", "bucket-win", r[2].matches.slice(0, 2), r[2])}
+                        ${renderBucket("1:1", "Mitte", "", r[2].matches.slice(2, 6), r[2])}
+                        ${renderBucket("0:2", "↘ K.-o.-Matches", "bucket-loss", r[2].matches.slice(6, 8), r[2])}
+                    </div>
+                    <div class="swiss-col">
+                        ${makeHead(r[3], 3)}
+                        ${makeOutcomeBox("✅ 3:0 Weiter", "qualified", byRecord(3, 0), 2)}
+                        ${renderBucket("2:1", "↗ Quali-Matches", "bucket-win", r[3].matches.slice(0, 3), r[3])}
+                        ${renderBucket("1:2", "↘ K.-o.-Matches", "bucket-loss", r[3].matches.slice(3, 6), r[3])}
+                        ${makeOutcomeBox("❌ 0:3 Raus", "eliminated", byRecord(0, 3), 2)}
+                    </div>
+                    <div class="swiss-col">
+                        ${makeHead(r[4], 4)}
+                        <div class="swiss-outcome-split">
+                            ${makeOutcomeBox("✅ 3:1", "qualified", byRecord(3, 1), 3)}
+                            ${makeOutcomeBox("✅ 3:2", "qualified", byRecord(3, 2), 3)}
+                        </div>
+                        ${renderBucket("2:2", "Entscheidung", "bucket-decider", r[4].matches.slice(0, 3), r[4])}
+                        <div class="swiss-outcome-split">
+                            ${makeOutcomeBox("❌ 1:3", "eliminated", byRecord(1, 3), 3)}
+                            ${makeOutcomeBox("❌ 2:3", "eliminated", byRecord(2, 3), 3)}
+                        </div>
+                    </div>
+                `;
+            } else {
+                // 8er Swiss (3 Runden)
+                colsHtml = `
+                    <div class="swiss-col">${makeHead(r[0], 0)}${renderBucket("0:0", "4 Matches", "", r[0].matches.slice(0, 4), r[0])}</div>
+                    <div class="swiss-col">${makeHead(r[1], 1)}${renderBucket("1:0", "↗ Sieger R1", "bucket-win", r[1].matches.slice(0, 2), r[1])}${renderBucket("0:1", "↘ Verlierer R1", "bucket-loss", r[1].matches.slice(2, 4), r[1])}</div>
+                    <div class="swiss-col">${makeHead(r[2], 2)}${makeOutcomeBox("✅ 2:0 Weiter", "qualified", byRecord(2, 0), 2)}${renderBucket("1:1", "Entscheidung", "bucket-decider", r[2].matches.slice(0, 2), r[2])}${makeOutcomeBox("❌ 0:2 Raus", "eliminated", byRecord(0, 2), 2)}</div>
+                    <div class="swiss-col"><div class="swiss-col-head"><strong>Endergebnis</strong><small>2:1 / 1:2</small></div>${makeOutcomeBox("✅ 2:1 Weiter", "qualified", byRecord(2, 1), 2)}${makeOutcomeBox("❌ 1:2 Raus", "eliminated", byRecord(1, 2), 2)}</div>
+                `;
+            }
+
+            const standingRows = standings.map((row, idx) => {
                 const info = getResolvedParticipant(row.uid, graph.participants);
                 const statusTxt = row.wins >= g.winsToAdvance ? "✅ Weiter" : (row.losses >= g.lossesToEliminate ? "❌ Raus" : "⚔️ Aktiv");
                 const cls = row.wins >= g.winsToAdvance ? "row-qualified" : (row.losses >= g.lossesToEliminate ? "row-eliminated" : "");
                 return `<tr class="${cls}"><td>${idx + 1}</td><td>${info ? `${info.icon} ${esc(info.displayName)}` : "–"}</td><td><strong>${row.wins} - ${row.losses}</strong></td><td>${statusTxt}</td></tr>`;
             }).join("");
-
-            const roundsHtml = g.rounds.map((r, rIdx) => `
-                <div class="swiss-round-card">
-                    <div class="round-day-header">
-                        <div><strong>${esc(r.name)} (${esc(r.dateLabel)})</strong></div>
-                        <div style="display:flex; gap:6px; align-items:center;">
-                            ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="swiss-round" data-tournament-id="${esc(t.id)}" data-target-id="${esc(g.id)}" data-sub-index="${rIdx}" data-current-val="${esc(r.dateLabel)}" title="Datum manuell bearbeiten">✏️ Datum</button>` : ""}
-                            ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="pair-swiss-round" data-tournament-id="${esc(t.id)}" data-group-id="${esc(g.id)}" data-round-index="${rIdx}" ${graph.participants.length < 2 ? "disabled" : ""}>⚡ Paaren</button>` : `<span>${r.matches.length} Matches</span>`}
-                        </div>
-                    </div>
-                    ${r.matches.map(m => renderMatchCard(t.id, m, r.dateLabel, m.format, graph, admin, [], r.dateEdited)).join("")}
-                </div>
-            `).join("");
 
             return `
                 <div class="stage-group-block">
@@ -1059,13 +1127,16 @@ export function createTournamentsModule(deps) {
                         <h3>🇨🇭 ${esc(g.name)} (${g.teamCount} Teams · ${g.winsToAdvance} Siege = Weiter, ${g.lossesToEliminate} Niederlagen = Raus)</h3>
                         ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten verteilen</button>` : ""}
                     </div>
-                    <div class="ranking-table-wrap" style="margin-bottom:14px;">
-                        <table class="ranking-table stage-table">
-                            <thead><tr><th>#</th><th>Team</th><th>Bilanz (S-N)</th><th>Status</th></tr></thead>
-                            <tbody>${standingRows || `<tr><td colspan="4" class="muted">Noch keine Teams zugewiesen.</td></tr>`}</tbody>
-                        </table>
-                    </div>
-                    <div class="swiss-rounds-scroll"><div class="swiss-rounds-row">${roundsHtml}</div></div>
+                    <div class="swiss-tree-scroll"><div class="swiss-tree-grid">${colsHtml}</div></div>
+                    <details class="swiss-table-details">
+                        <summary>📊 Detaillierte Swiss-Tabelle anzeigen (${standings.length} Teams)</summary>
+                        <div class="ranking-table-wrap" style="margin-top:10px;">
+                            <table class="ranking-table stage-table">
+                                <thead><tr><th>#</th><th>Team</th><th>Bilanz (S-N)</th><th>Status</th></tr></thead>
+                                <tbody>${standingRows || `<tr><td colspan="4" class="muted">Noch keine Teams zugewiesen.</td></tr>`}</tbody>
+                            </table>
+                        </div>
+                    </details>
                 </div>
             `;
         }).join("");
@@ -1073,26 +1144,89 @@ export function createTournamentsModule(deps) {
 
     function renderGslTab(t, graph, admin) {
         return (t.deGroups || []).map((g, gIdx) => {
-            const byRound = {};
-            g.matches.forEach(m => {
-                if (!byRound[m.round]) byRound[m.round] = [];
-                byRound[m.round].push(m);
-            });
-            const roundsHtml = Object.entries(byRound).map(([rName, list]) => {
-                const curDate = list[0]?.dateLabel || "";
-                return `
-                    <div class="round-day-card">
-                        <div class="round-day-header">
-                            <strong>${esc(rName)}${curDate ? ` (${esc(curDate)})` : ""}</strong>
-                            <div style="display:flex; gap:6px; align-items:center;">
-                                <span>${list.length} Matches</span>
-                                ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="gsl-round" data-tournament-id="${esc(t.id)}" data-target-id="${esc(g.id)}" data-round-name="${esc(rName)}" data-current-val="${esc(curDate)}" title="Datum manuell bearbeiten">✏️ Datum</button>` : ""}
+            const m = g.matches || [];
+            const isSix = g.size === 4 && (g.advanceCount === 1 || m.length === 6);
+            const isFive = g.size === 4 && !isSix && m.length >= 5;
+
+            const dateBtn = (roundName, curDate) => admin
+                ? `<button type="button" class="btn btn-secondary btn-small" style="padding:2px 6px; font-size:.72rem;" data-action="edit-date-label" data-path-type="gsl-round" data-tournament-id="${esc(t.id)}" data-target-id="${esc(g.id)}" data-round-name="${esc(roundName)}" data-current-val="${esc(curDate || "")}" title="Datum bearbeiten">✏️</button>`
+                : "";
+
+            const pref = (ids) => ids.flatMap(id => graph.matchSlots[id] || []).filter(Boolean);
+
+            let bodyHtml = "";
+            if (isSix) {
+                const [o1, o2, ub, lb, cf, gf] = m;
+                const gfWin = graph.matchWinners[gf.id];
+                const gfInfo = gfWin ? getResolvedParticipant(gfWin, graph.participants) : null;
+                bodyHtml = `
+                    <div class="gsl-tree-scroll"><div class="gsl-tree">
+                        <div class="gsl-headers-6">
+                            <div class="gsl-col-head"><span>Opening round <small>${esc(o1.dateLabel || "")}</small></span>${dateBtn(o1.round, o1.dateLabel)}</div><div></div>
+                            <div class="gsl-col-head"><span>Upper final <small>${esc(ub.dateLabel || "")}</small></span>${dateBtn(ub.round, ub.dateLabel)}</div><div></div>
+                            <div class="gsl-col-head"><span>Group final <small>${esc(gf.dateLabel || "")}</small></span>${dateBtn(gf.round, gf.dateLabel)}</div>
+                        </div>
+                        <div class="gsl-grid-6">
+                            <div class="gsl-cell-open">
+                                ${renderMatchCard(t.id, o1, o1.dateLabel || "", o1.format, graph, admin, [], o1.dateEdited)}
+                                ${renderMatchCard(t.id, o2, o2.dateLabel || "", o2.format, graph, admin, [], o2.dateEdited)}
+                            </div>
+                            <div class="gsl-conn-r1"><div class="bracket-connector"></div></div>
+                            <div class="gsl-cell-ub">${renderMatchCard(t.id, ub, ub.dateLabel || "", ub.format, graph, admin, pref([o1.id, o2.id]), ub.dateEdited)}</div>
+                            <div class="gsl-conn-gf"><div class="bracket-connector"></div></div>
+                            <div class="gsl-cell-gf">
+                                ${renderMatchCard(t.id, gf, gf.dateLabel || "", gf.format, graph, admin, pref([ub.id, cf.id]), gf.dateEdited)}
+                                <div class="lan-qual-pill ${gfInfo ? "qualified" : ""}" style="cursor:default;">
+                                    ${gfInfo ? `✅ ${gfInfo.icon} ${esc(gfInfo.displayName)}<br><span style="font-weight:400;">Gruppensieger (Weiter)</span>` : `🏆 1 Gruppensieger weiter`}
+                                </div>
+                            </div>
+                            <div class="gsl-cell-lb1">
+                                <div class="gsl-lb-subhead"><span><span class="gsl-drop-arrow">↓</span> Lower Bracket · ${esc(lb.dateLabel || "")}</span>${dateBtn(lb.round, lb.dateLabel)}</div>
+                                ${renderMatchCard(t.id, lb, lb.dateLabel || "", lb.format, graph, admin, pref([o1.id, o2.id]), lb.dateEdited)}
+                            </div>
+                            <div class="gsl-conn-line"></div>
+                            <div class="gsl-cell-lb2">
+                                <div class="gsl-lb-subhead"><span><span class="gsl-drop-arrow">↓</span> Consolidation · ${esc(cf.dateLabel || "")}</span>${dateBtn(cf.round, cf.dateLabel)}</div>
+                                ${renderMatchCard(t.id, cf, cf.dateLabel || "", cf.format, graph, admin, pref([ub.id, lb.id]), cf.dateEdited)}
                             </div>
                         </div>
-                        ${list.map(m => renderMatchCard(t.id, m, m.dateLabel || "", m.format, graph, admin, [], m.dateEdited)).join("")}
-                    </div>
+                    </div></div>
                 `;
-            }).join("");
+            } else if (isFive) {
+                const [o1, o2, w1, l1, d1] = m;
+                const q1 = graph.matchWinners[w1.id] ? getResolvedParticipant(graph.matchWinners[w1.id], graph.participants) : null;
+                const q2 = graph.matchWinners[d1.id] ? getResolvedParticipant(graph.matchWinners[d1.id], graph.participants) : null;
+                bodyHtml = `
+                    <div class="gsl-tree-scroll"><div class="gsl-tree">
+                        <div class="gsl-headers-5">
+                            <div class="gsl-col-head"><span>Opening round <small>${esc(o1.dateLabel || "")}</small></span>${dateBtn(o1.round, o1.dateLabel)}</div><div></div>
+                            <div class="gsl-col-head"><span>Winners / Decider</span>${dateBtn(w1.round, w1.dateLabel)}</div>
+                            <div class="gsl-col-head"><span>🏆 Qualifiziert (Top 2)</span></div>
+                        </div>
+                        <div class="gsl-grid-5">
+                            <div class="gsl-cell-open">
+                                ${renderMatchCard(t.id, o1, o1.dateLabel || "", o1.format, graph, admin, [], o1.dateEdited)}
+                                ${renderMatchCard(t.id, o2, o2.dateLabel || "", o2.format, graph, admin, [], o2.dateEdited)}
+                            </div>
+                            <div class="gsl-conn-r1"><div class="bracket-connector"></div></div>
+                            <div class="gsl-cell-ub">${renderMatchCard(t.id, w1, w1.dateLabel || "", w1.format, graph, admin, pref([o1.id, o2.id]), w1.dateEdited)}</div>
+                            <div class="gsl-qual-row-1"><div class="lan-qual-pill ${q1 ? "qualified" : ""}" style="cursor:default;">${q1 ? `✅ ${q1.icon} ${esc(q1.displayName)}` : "🏆 Qualifikant #1"}</div></div>
+                            <div class="gsl-cell-lb1">
+                                <div class="gsl-lb-subhead"><span><span class="gsl-drop-arrow">↓</span> Elimination · ${esc(l1.dateLabel || "")}</span>${dateBtn(l1.round, l1.dateLabel)}</div>
+                                ${renderMatchCard(t.id, l1, l1.dateLabel || "", l1.format, graph, admin, pref([o1.id, o2.id]), l1.dateEdited)}
+                            </div>
+                            <div class="gsl-conn-line"></div>
+                            <div class="gsl-cell-lb2">
+                                <div class="gsl-lb-subhead"><span><span class="gsl-drop-arrow">↓</span> Decider · ${esc(d1.dateLabel || "")}</span>${dateBtn(d1.round, d1.dateLabel)}</div>
+                                ${renderMatchCard(t.id, d1, d1.dateLabel || "", d1.format, graph, admin, pref([w1.id, l1.id]), d1.dateEdited)}
+                            </div>
+                            <div class="gsl-qual-row-2"><div class="lan-qual-pill ${q2 ? "qualified" : ""}" style="cursor:default;">${q2 ? `✅ ${q2.icon} ${esc(q2.displayName)}` : "🏆 Qualifikant #2"}</div></div>
+                        </div>
+                    </div></div>
+                `;
+            } else {
+                bodyHtml = `<div class="placeholder-box"><span>Für diese Gruppengröße sind keine GSL-Matches definiert.</span></div>`;
+            }
 
             return `
                 <div class="stage-group-block">
@@ -1100,7 +1234,7 @@ export function createTournamentsModule(deps) {
                         <h3>⚔️ ${esc(g.name)} (GSL / Double-Elim · ${g.size} Teams · Top ${g.advanceCount || 2} weiter)</h3>
                         ${admin ? `<div style="display:flex; gap:6px;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten</button><button type="button" class="btn btn-secondary btn-small" data-action="autofill-de-group" data-tournament-id="${esc(t.id)}" data-group-index="${gIdx}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teams setzen</button></div>` : ""}
                     </div>
-                    <div class="round-days-grid">${roundsHtml}</div>
+                    ${bodyHtml}
                 </div>
             `;
         }).join("");
@@ -1779,12 +1913,24 @@ export function createTournamentsModule(deps) {
                 if (!g) return;
                 const graph = resolveTournamentGraph(t);
                 const gTeams = graph.participants.slice(gIdx * g.teamCount, (gIdx + 1) * g.teamCount);
-                const active = rIdx === 0 ? gTeams.map(p => ({ uid: p.uid, wins: 0, losses: 0, opponents: new Set() })) : (graph.swissStandings[gId] || []).filter(s => s.wins < g.winsToAdvance && s.losses < g.lossesToEliminate);
-                const buckets = {};
-                active.forEach(s => { const k = `${s.wins}-${s.losses}`; if (!buckets[k]) buckets[k] = []; buckets[k].push(s); });
-                const pairs = [];
-                Object.keys(buckets).sort((a, b) => Number(b.split("-")[0]) - Number(a.split("-")[0])).forEach(k => {
-                    const pool = [...buckets[k]];
+                const active = rIdx === 0
+                    ? gTeams.map(p => ({ uid: p.uid, wins: 0, losses: 0, opponents: new Set() }))
+                    : (graph.swissStandings[gId] || []).filter(s => s.wins < g.winsToAdvance && s.losses < g.lossesToEliminate);
+
+                const bucketOrderByRound = g.teamCount >= 16
+                    ? [["0-0"], ["1-0", "0-1"], ["2-0", "1-1", "0-2"], ["2-1", "1-2"], ["2-2"]]
+                    : [["0-0"], ["1-0", "0-1"], ["1-1"]];
+                const bucketSizesByRound = g.teamCount >= 16
+                    ? [[8], [4, 4], [2, 4, 2], [3, 3], [3]]
+                    : [[4], [2, 2], [2]];
+
+                const order = bucketOrderByRound[rIdx] || [];
+                const sizes = bucketSizesByRound[rIdx] || [g.rounds[rIdx].matches.length];
+                let slotCursor = 0;
+
+                order.forEach((rec, bIdx) => {
+                    const pool = active.filter(s => `${s.wins}-${s.losses}` === rec);
+                    const pairs = [];
                     while (pool.length >= 2) {
                         const a = pool.shift();
                         let oppIdx = pool.findIndex(b => !a.opponents?.has(b.uid));
@@ -1792,8 +1938,13 @@ export function createTournamentsModule(deps) {
                         const [b] = pool.splice(oppIdx, 1);
                         pairs.push([a.uid, b.uid]);
                     }
+                    const slotCount = sizes[bIdx] || 0;
+                    for (let i = 0; i < slotCount; i++) {
+                        const m = g.rounds[rIdx].matches[slotCursor + i];
+                        if (m) clone.matches[m.id] = pairs[i] || [null, null];
+                    }
+                    slotCursor += slotCount;
                 });
-                g.rounds[rIdx].matches.forEach((m, idx) => { clone.matches[m.id] = pairs[idx] || [null, null]; });
             } else if (action === "fill-playin-from-stage1") {
                 const adv = resolveTournamentGraph(t).stageAdvancers;
                 const pi = t.playInStage;
