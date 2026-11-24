@@ -11,6 +11,8 @@ export function createTournamentsModule(deps) {
         getTournamentsCache,
         saveTournamentDoc,
         deleteTournamentDoc,
+        savePlayerResponse,
+        onOpenTournament,
         onTitleChange
     } = deps;
 
@@ -19,6 +21,11 @@ export function createTournamentsModule(deps) {
     let activeSubTab = "";
     let selectedVrsDate = "";
     let vrsSearchTerm = "";
+    let selectedTierTarget = "stage1";
+    let vrsFillMode = "rank";
+    let vrsFillValue = "1";
+    let activeOqSection = "all";
+    let oqPickerContext = null;
 
     const TIMEZONES = {
         europe: { label: "UTC+1", offsetFromBase: 0 },
@@ -31,6 +38,8 @@ export function createTournamentsModule(deps) {
         div.textContent = String(str ?? "");
         return div.innerHTML;
     };
+
+    const sanitizeKey = (k) => String(k || "").replace(/[^a-zA-Z0-9_-]/g, "_");
 
     const addDaysISO = (dateStr, delta) => {
         const base = /^\d{4}-\d{2}-\d{2}$/.test(dateStr || "") ? dateStr : "2025-01-01";
@@ -127,6 +136,26 @@ export function createTournamentsModule(deps) {
         return { label: "🏁 Vergangen", cls: "t-badge-vergangen" };
     }
 
+    function getVrsEntriesForDate(date) {
+        const list = getVrsRankingsMap()[date] || [];
+        const counts = {};
+        return list.map((item, idx) => {
+            const name = String(item[0]);
+            counts[name] = (counts[name] || 0) + 1;
+            return { uid: `vrs:${name}#${counts[name]}`, rank: idx + 1, name, points: Number(item[1]) || 0, region: item[2] ? String(item[2]) : "" };
+        });
+    }
+
+    function buildVrsLookupForDate(date) {
+        const byUid = new Map();
+        const byName = new Map();
+        getVrsEntriesForDate(date).forEach(e => {
+            byUid.set(e.uid, e.points);
+            if (!byName.has(e.name)) byName.set(e.name, e.points);
+        });
+        return { byUid, byName };
+    }
+
     // ==================== GENERATOREN FÜR ALLE STUFEN ====================
     function chunkIntoDays(matches, startDate, dayOffset, matchesPerDay) {
         const perDay = Math.max(1, Number(matchesPerDay) || 4);
@@ -142,6 +171,68 @@ export function createTournamentsModule(deps) {
             });
         }
         return { days, nextOffset: dayOffset + days.length };
+    }
+
+    function generateBracketSeeds(n) {
+        let seeds = [1, 2];
+        while (seeds.length < n) {
+            const nextSum = seeds.length * 2 + 1;
+            const expanded = [];
+            for (const s of seeds) expanded.push(s, nextSum - s);
+            seeds = expanded;
+        }
+        return seeds;
+    }
+
+    function getBracketRoundName(roundSize) {
+        if (roundSize === 2) return "Finale";
+        if (roundSize === 4) return "Halbfinale";
+        if (roundSize === 8) return "Viertelfinale";
+        if (roundSize === 16) return "Achtelfinale";
+        return `Round of ${roundSize}`;
+    }
+
+    function buildOpenQualifierPlayoffs(size, oqQualifierCount, startDate, dayOffset, defaultFormat, finalFormat) {
+        const validSize = [8, 16, 32, 64, 128, 256, 512].includes(Number(size)) ? Number(size) : 64;
+        const qualCap = Math.min(Math.max(1, Number(oqQualifierCount) || 4), Math.floor(validSize / 2));
+        const rounds = [];
+        let curSize = validSize;
+        let offset = dayOffset;
+        let prevIds = null;
+
+        while (curSize >= qualCap * 2) {
+            const matchCount = curSize / 2;
+            const isQualiRound = matchCount === qualCap;
+            const roundName = getBracketRoundName(curSize);
+            const rId = `oq-r${curSize}`;
+            const fmt = (isQualiRound && matchCount === 1) ? finalFormat : defaultFormat;
+
+            const matches = [];
+            for (let i = 0; i < matchCount; i++) {
+                const m = {
+                    id: `${rId}-${i + 1}`,
+                    label: matchCount === 1 ? roundName : `R${curSize} #${i + 1}`,
+                    format: fmt
+                };
+                if (prevIds) m.fromMatches = [prevIds[i * 2], prevIds[i * 2 + 1]];
+                matches.push(m);
+            }
+
+            const perDay = matchCount > 16 ? matchCount : Math.max(4, matchCount);
+            const chunked = chunkIntoDays(matches, startDate, offset, perDay);
+            offset = chunked.nextOffset;
+            rounds.push({
+                id: rId,
+                name: roundName,
+                defaultFormat: fmt,
+                subtitle: `${matchCount} Matches (${fmt})${isQualiRound ? ` → Top ${qualCap} weiter` : ""}`,
+                days: chunked.days
+            });
+
+            prevIds = matches.map(m => m.id);
+            curSize = curSize / 2;
+        }
+        return { rounds, qualCap, nextOffset: offset };
     }
 
     function buildDoubleElimPlayoffs(size, startDate, dayOffset, defaultFormat, finalFormat, isQualifierMode = false) {
@@ -189,10 +280,10 @@ export function createTournamentsModule(deps) {
                     "de-lb-r2-1", "de-lb-r2-2", "de-lb-r2-3", "de-lb-r2-4"
                 ],
                 rounds: [
-                    { id: "ub-r1", name: "UB Runde 1", defaultFormat, subtitle: "8 Matches (BO3) · Sieger in UB R2, Verlierer in LB R1", days: d1.days },
-                    { id: "lb-r1", name: "LB Runde 1", defaultFormat, subtitle: "4 Matches (BO3) · Sieger in LB R2, Verlierer raus", days: d3.days },
-                    { id: "ub-r2", name: "UB Quali-Runde", defaultFormat, subtitle: "4 Matches (BO3) · 4 Sieger direkt qualifiziert!", days: d2.days },
-                    { id: "lb-r2", name: "LB Quali-Runde", defaultFormat, subtitle: "4 Matches (BO3) · 4 Sieger qualifiziert!", days: d4.days }
+                    { id: "ub-r1", name: "UB Runde 1", defaultFormat, subtitle: "8 Matches", days: d1.days },
+                    { id: "lb-r1", name: "LB Runde 1", defaultFormat, subtitle: "4 Matches", days: d3.days },
+                    { id: "ub-r2", name: "UB Quali-Runde", defaultFormat, subtitle: "4 Quali-Matches", days: d2.days },
+                    { id: "lb-r2", name: "LB Quali-Runde", defaultFormat, subtitle: "4 Quali-Matches", days: d4.days }
                 ]
             };
         }
@@ -238,7 +329,8 @@ export function createTournamentsModule(deps) {
         const ubF = [{ id: "de8-ub-f-1", label: "UB Finale", format: defaultFormat, fromMatches: ["de8-ub-sf-1", "de8-ub-sf-2"] }];
         const lbR1 = Array.from({ length: 2 }, (_, i) => ({ id: `de8-lb-r1-${i + 1}`, label: `LB Runde 1 #${i + 1}`, format: defaultFormat, fromLosers: [`de8-ub-qf-${i * 2 + 1}`, `de8-ub-qf-${i * 2 + 2}`] }));
         const lbR2 = Array.from({ length: 2 }, (_, i) => ({ id: `de8-lb-r2-${i + 1}`, label: `LB Runde 2 #${i + 1}`, format: defaultFormat, fromMixed: [{ type: "winner", id: `de8-lb-r1-${i + 1}` }, { type: "loser", id: `de8-ub-sf-${2 - i}` }] }));
-        const lbF = [{ id: "de8-lb-f-1", label: "LB Finale", format: defaultFormat, fromMixed: [{ type: "loser", id: "de8-ub-f-1" }, { type: "winner", id: `de8-lb-r2-1` }] }];
+        const lbSf = [{ id: "de8-lb-sf-1", label: "LB Halbfinale", format: defaultFormat, fromMatches: ["de8-lb-r2-1", "de8-lb-r2-2"] }];
+        const lbF = [{ id: "de8-lb-f-1", label: "LB Finale", format: defaultFormat, fromMixed: [{ type: "loser", id: "de8-ub-f-1" }, { type: "winner", id: "de8-lb-sf-1" }] }];
         const gf = [{ id: "de8-gf-1", label: "Grand Final", format: finalFormat, fromMatches: ["de8-ub-f-1", "de8-lb-f-1"] }];
 
         return {
@@ -249,8 +341,9 @@ export function createTournamentsModule(deps) {
                 { id: "ub-final", name: "UB Finale", defaultFormat, days: chunkIntoDays(ubF, startDate, offset + 2, 1).days },
                 { id: "lb-r1", name: "LB Runde 1", defaultFormat, days: chunkIntoDays(lbR1, startDate, offset + 1, 2).days },
                 { id: "lb-r2", name: "LB Runde 2", defaultFormat, days: chunkIntoDays(lbR2, startDate, offset + 2, 2).days },
-                { id: "lb-final", name: "LB Finale", defaultFormat, days: chunkIntoDays(lbF, startDate, offset + 3, 1).days },
-                { id: "grand-final", name: "Grand Final", defaultFormat: finalFormat, days: chunkIntoDays(gf, startDate, offset + 4, 1).days }
+                { id: "lb-sf", name: "LB Halbfinale", defaultFormat, days: chunkIntoDays(lbSf, startDate, offset + 3, 1).days },
+                { id: "lb-final", name: "LB Finale", defaultFormat, days: chunkIntoDays(lbF, startDate, offset + 4, 1).days },
+                { id: "grand-final", name: "Grand Final", defaultFormat: finalFormat, days: chunkIntoDays(gf, startDate, offset + 5, 1).days }
             ]
         };
     }
@@ -278,13 +371,33 @@ export function createTournamentsModule(deps) {
             return rounds;
         }
 
-        const stages = size === 32 && isQuali32
-            ? [{ id: "r32", name: "Round of 32", label: "R32 Match", count: 16, fmt: defaultFormat }, { id: "r16", name: "Round of 16", label: "R16 Match", count: 8, fmt: defaultFormat }]
-            : size === 16
-                ? [{ id: "r16", name: "Achtelfinale", label: "Achtelfinale", count: 8, fmt: defaultFormat }, { id: "qf", name: "Viertelfinale", label: "Viertelfinale", count: 4, fmt: defaultFormat }, { id: "sf", name: "Halbfinale", label: "Halbfinale", count: 2, fmt: defaultFormat }, { id: "final", name: "Finale", label: "Grand Final", count: 1, fmt: finalFormat }]
-                : size === 8
-                    ? [{ id: "qf", name: "Viertelfinale", label: "Viertelfinale", count: 4, fmt: defaultFormat }, { id: "sf", name: "Halbfinale", label: "Halbfinale", count: 2, fmt: defaultFormat }, { id: "final", name: "Finale", label: "Grand Final", count: 1, fmt: finalFormat }]
-                    : [{ id: "sf", name: "Halbfinale", label: "Halbfinale", count: 2, fmt: defaultFormat }, { id: "final", name: "Finale", label: "Grand Final", count: 1, fmt: finalFormat }];
+        if (size === 32 && isQuali32) {
+            const r32Matches = Array.from({ length: 16 }, (_, i) => ({
+                id: `r32-${i + 1}`,
+                label: `R32 Match ${i + 1}`,
+                format: defaultFormat
+            }));
+            const c1 = chunkIntoDays(r32Matches, startDate, offset, matchesPerDay);
+            offset = c1.nextOffset;
+            rounds.push({ id: "r32", name: "Round of 32", defaultFormat, subtitle: `16 Matches (${defaultFormat})`, days: c1.days });
+
+            const r16Matches = Array.from({ length: 8 }, (_, i) => ({
+                id: `r16-${i + 1}`,
+                label: `R16 Match ${i + 1}`,
+                format: defaultFormat,
+                r32WinnersOnly: true,
+                slotHints: ["R32-Sieger wählen", "R32-Sieger wählen"]
+            }));
+            const c2 = chunkIntoDays(r16Matches, startDate, offset, matchesPerDay);
+            rounds.push({ id: "r16", name: "Round of 16", defaultFormat, subtitle: `8 Matches (${defaultFormat}) · Nur R32-Sieger wählbar`, days: c2.days });
+            return rounds;
+        }
+
+        const stages = size === 16
+            ? [{ id: "r16", name: "Achtelfinale", label: "Achtelfinale", count: 8, fmt: defaultFormat }, { id: "qf", name: "Viertelfinale", label: "Viertelfinale", count: 4, fmt: defaultFormat }, { id: "sf", name: "Halbfinale", label: "Halbfinale", count: 2, fmt: defaultFormat }, { id: "final", name: "Finale", label: "Grand Final", count: 1, fmt: finalFormat }]
+            : size === 8
+                ? [{ id: "qf", name: "Viertelfinale", label: "Viertelfinale", count: 4, fmt: defaultFormat }, { id: "sf", name: "Halbfinale", label: "Halbfinale", count: 2, fmt: defaultFormat }, { id: "final", name: "Finale", label: "Grand Final", count: 1, fmt: finalFormat }]
+                : [{ id: "sf", name: "Halbfinale", label: "Halbfinale", count: 2, fmt: defaultFormat }, { id: "final", name: "Finale", label: "Grand Final", count: 1, fmt: finalFormat }];
 
         let prevIds = null;
         stages.forEach((st, idx) => {
@@ -393,7 +506,7 @@ export function createTournamentsModule(deps) {
         }
         return { id: groupId, name: `Gruppe ${groupId}`, size, advanceCount, rounds, nextOffset: dayOffset + (n - 1) };
     }
-    // ==================== HAUPT-BAUKASTEN ====================
+
     function buildTournamentFromModularConfig(cfg) {
         const startDate = cfg.startDate || "2025-02-01";
         const defaultFormat = cfg.defaultFormat || "BO3";
@@ -413,9 +526,13 @@ export function createTournamentsModule(deps) {
         const hasPlayoffs = Boolean(cfg.hasPlayoffs);
         const playoffType = cfg.playoffType || "single_elim";
         const isDoubleElimQuali = playoffType === "double_elim_quali";
+        const isOpenQualifier = playoffType === "open_qualifier";
         const playoffSize = isDoubleElimQuali ? 16 : (Number(cfg.playoffSize) || 8);
-        const directInvites = Math.max(0, Number(cfg.directInvites) || 0);
-        const isQuali32 = Boolean(cfg.isQuali32 || cfg.bracketType === "quali32");
+        const directInvites = isOpenQualifier ? 0 : Math.max(0, Number(cfg.directInvites) || 0);
+        const isQuali32 = !isOpenQualifier && Boolean(cfg.isQuali32 || playoffSize === 32);
+        const oqQualifierCount = isOpenQualifier
+            ? Math.min(Math.max(1, Number(cfg.oqQualifierCount) || 4), Math.floor(playoffSize / 2))
+            : 0;
 
         let currentDayOffset = 0;
         let swissGroups = [];
@@ -431,7 +548,7 @@ export function createTournamentsModule(deps) {
             if (stage1Type === "swiss") {
                 const wins = groupSize >= 16 ? 3 : 2;
                 swissGroups = letters.slice(0, groupCount).map(g =>
-                    buildSwissStage(g, groupCount > 1 ? `Gruppe ${g} (Swiss)` : "Swiss Stage", groupSize, wins, wins, startDate, currentDayOffset, defaultFormat, deciderFormat)
+                    buildSwissStage(g, groupCount > 1 ? `Gruppe ${g}` : "Gruppenphase", groupSize, wins, wins, startDate, currentDayOffset, defaultFormat, deciderFormat)
                 );
                 currentDayOffset = Math.max(...swissGroups.map(g => g.nextOffset));
             } else if (stage1Type === "gsl") {
@@ -453,7 +570,11 @@ export function createTournamentsModule(deps) {
         }
 
         if (hasPlayoffs) {
-            if (isDoubleElimQuali || playoffType === "double_elim") {
+            if (isOpenQualifier) {
+                const oq = buildOpenQualifierPlayoffs(playoffSize, oqQualifierCount, startDate, currentDayOffset, defaultFormat, finalFormat);
+                playoffRounds = oq.rounds;
+                currentDayOffset = oq.nextOffset;
+            } else if (isDoubleElimQuali || playoffType === "double_elim") {
                 isDoubleElimPlayoffs = true;
                 const de = buildDoubleElimPlayoffs(
                     playoffSize >= 16 ? 16 : 8, startDate, currentDayOffset, defaultFormat, finalFormat, isDoubleElimQuali
@@ -512,29 +633,20 @@ export function createTournamentsModule(deps) {
             const predT = getTournamentById(cfg.predecessorId);
             let count = 8;
             if (predT) {
-                if (predT.isDoubleElimQuali || predT.isQuali32) count = 8;
+                if (predT.playoffType === "open_qualifier" || predT.isOpenQualifier) count = Number(predT.oqQualifierCount) || 4;
+                else if (predT.isDoubleElimQuali || predT.isQuali32) count = 8;
                 else if (predT.hasPlayIn) count = predT.playInMatches || 4;
                 else if (predT.hasStage1) {
                     if (predT.stage1Type === "swiss") count = (predT.groupCount || 1) * ((predT.groupSize || 16) >= 16 ? 8 : 4);
                     else count = (predT.groupCount || 1) * (predT.advancePerGroup || 2);
+                } else if (predT.hasPlayoffs) {
+                    count = 1;
                 }
             }
             qualifiedFrom = {
                 tournamentId: cfg.predecessorId,
                 slots: Array.from({ length: count }, (_, i) => ({ matchId: `q-${i + 1}`, label: `Qualifikant #${i + 1}` }))
             };
-        }
-
-        const stageParts = [];
-        if (hasStage1) {
-            if (stage1Type === "swiss") stageParts.push(`${groupCount > 1 ? `${groupCount}× ` : ""}${groupSize}er Swiss`);
-            else if (stage1Type === "gsl") stageParts.push(`${groupCount}× ${groupSize}er GSL (Top ${advancePerGroup} weiter)`);
-            else stageParts.push(`${groupCount}× ${groupSize}er Round-Robin (Top ${advancePerGroup} weiter)`);
-        }
-        if (hasPlayIn) stageParts.push(`Play-In (${playInMatches} Matches)`);
-        if (hasPlayoffs) {
-            if (isDoubleElimQuali) stageParts.push(`Double-Elim Play-In / Quali (16 Teams → 8 weiter, 20 Matches)`);
-            else stageParts.push(`${isDoubleElimPlayoffs ? "Double-Elim" : "Single-Elim"} ${playoffSize}er Playoffs${directInvites > 0 ? ` (${directInvites} Direkt-Einladungen)` : ""}`);
         }
 
         const matchFormatSummary = defaultFormat === finalFormat ? `Best of ${defaultFormat.slice(2)} (${defaultFormat})` : `${defaultFormat} (Finale: ${finalFormat})`;
@@ -545,13 +657,14 @@ export function createTournamentsModule(deps) {
             name: cfg.name.trim(),
             statusMode: statusInput === "auto" ? "auto" : "manual",
             status: statusInput,
+            useAutoInvites: cfg.useAutoInvites !== false,
             startDate,
             endDate,
             matchesPerDay,
             maxTeams: totalTeams,
             hasStage1, stage1Type, groupCount, groupSize, advancePerGroup,
             hasPlayIn, playInMatches,
-            hasPlayoffs, playoffType, isDoubleElimQuali, deQualiMeta,
+            hasPlayoffs, playoffType, isDoubleElimQuali, isOpenQualifier, oqQualifierCount, deQualiMeta,
             playoffSize, directInvites, isQuali32, isDoubleElimPlayoffs,
             onlineDates: cfg.onlineDates.trim(),
             onlineRegion: cfg.onlineRegion.trim(),
@@ -559,7 +672,7 @@ export function createTournamentsModule(deps) {
             lanLocation: (cfg.lanLocation || "").trim(),
             travelWindow: (cfg.travelWindow || "").trim(),
             defaultFormat, deciderFormat, finalFormat, matchFormatSummary,
-            formatSummary: `${stageParts.join(" → ") || "Turnier"} (${matchFormatSummary})`,
+            formatSummary: `${totalTeams} Teams (${matchFormatSummary})`,
             inviteSummary: (cfg.inviteSummary || `Top ${totalTeams} Teams`).trim(),
             nextTournamentId: cfg.nextTournamentId || "",
             qualifiedFrom,
@@ -571,6 +684,8 @@ export function createTournamentsModule(deps) {
             matches: cfg.existingMatches || {},
             matchSchedules: cfg.existingMatchSchedules || {},
             winners: cfg.existingWinners || {},
+            defaultWins: cfg.existingDefaultWins || {},
+            invitesBaked: Boolean(cfg.invitesBaked),
             sortOrder: cfg.sortOrder ?? Date.now(),
             createdAt: cfg.createdAt ?? Date.now()
         };
@@ -580,30 +695,498 @@ export function createTournamentsModule(deps) {
         return [];
     }
 
-    // ==================== TURNIER-GRAPH AUFLÖSEN (MIT SPOILER-SCHUTZ) ====================
-    function resolveTournamentGraph(tournament, visited = new Set()) {
+    // ==================== VRS-EINLADUNGEN & VERBUND-LOGIK ====================
+    function splitBaseParticipantsByTier(t) {
+        const raw = Array.isArray(t.participants) ? t.participants : [];
+        const hasStage2Direct = Boolean(t.hasStage1 && t.hasPlayoffs && Number(t.directInvites) > 0);
+        const predSlots = t.qualifiedFrom?.slots?.length || 0;
+        const stage1DirectCap = hasStage2Direct ? Math.max(0, ((t.groupCount || 1) * (t.groupSize || 16)) - predSlots) : raw.length;
+
+        const stage1Base = [];
+        const playoffsDirectBase = [];
+        const allBase = [];
+        const manualPlayers = [];
+        let untaggedIdx = 0;
+
+        raw.forEach(p => {
+            if (p.type === "player") manualPlayers.push(p);
+            allBase.push(p);
+            if (!hasStage2Direct) return;
+            if (p.slotGroup === "playoffs_direct") {
+                playoffsDirectBase.push(p);
+            } else if (p.slotGroup === "stage1") {
+                stage1Base.push(p);
+            } else if (untaggedIdx < stage1DirectCap) {
+                stage1Base.push(p);
+                untaggedIdx++;
+            } else {
+                playoffsDirectBase.push(p);
+                untaggedIdx++;
+            }
+        });
+
+        return { hasStage2Direct, stage1DirectCap, stage1Base, playoffsDirectBase, allBase, manualPlayers };
+    }
+
+    function getPlayerResponseForChain(player, chainMemberIds, chainRootId) {
+        const resMap = player.tournamentResponses || {};
+        const rootKey = sanitizeKey(chainRootId);
+        if (resMap[rootKey]) return resMap[rootKey];
+        for (const id of chainMemberIds) {
+            const sk = sanitizeKey(id);
+            if (resMap[sk]) return resMap[sk];
+        }
+        return null;
+    }
+
+    function findMaxQualifyingPlayers(playersDesc, hurdlesAsc) {
+        const limit = Math.min(playersDesc.length, hurdlesAsc.length);
+        for (let m = limit; m >= 1; m--) {
+            let ok = true;
+            for (let i = 0; i < m; i++) {
+                if (playersDesc[i].points <= hurdlesAsc[m - 1 - i]) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) return m;
+        }
+        return 0;
+    }
+
+    function computeMinPointsNeededForTier(otherPlayersDesc, hurdlesAsc) {
+        if (!hurdlesAsc || hurdlesAsc.length === 0) return null;
+        const canQualifyAt = (pts) => {
+            const test = [...otherPlayersDesc, { uid: "__probe__", points: pts }]
+                .sort((a, b) => b.points - a.points);
+            const m = findMaxQualifyingPlayers(test, hurdlesAsc);
+            return test.slice(0, m).some(p => p.uid === "__probe__");
+        };
+        if (!canQualifyAt(9999999)) return null;
+        if (canQualifyAt(0)) return 0;
+        let lo = 1;
+        let hi = Math.max(1, ...hurdlesAsc.filter(x => x >= 0)) + 10000;
+        while (lo < hi) {
+            const mid = Math.floor((lo + hi) / 2);
+            if (canQualifyAt(mid)) hi = mid;
+            else lo = mid + 1;
+        }
+        return lo;
+    }
+
+    function computeAllCircuitsInviteData() {
+        const allTournaments = getTournamentsCache();
+        const gDate = currentGameDate();
+        const vrsDate = getSelectedRankingDate();
+        const vrsLookup = buildVrsLookupForDate(vrsDate);
+        const players = getPlayers();
+
+        const tMap = new Map(allTournaments.map(t => [t.id, t]));
+        const adj = new Map(allTournaments.map(t => [t.id, new Set()]));
+
+        allTournaments.forEach(t => {
+            const predId = t.qualifiedFrom?.tournamentId;
+            if (predId && tMap.has(predId)) {
+                adj.get(t.id).add(predId);
+                adj.get(predId).add(t.id);
+            }
+            if (t.nextTournamentId && tMap.has(t.nextTournamentId)) {
+                adj.get(t.id).add(t.nextTournamentId);
+                adj.get(t.nextTournamentId).add(t.id);
+            }
+        });
+
+        const visited = new Set();
+        const circuits = [];
+        const tournamentToCircuit = new Map();
+        const tierResultsByTournament = new Map();
+        const emailsByPlayerUid = new Map();
+        players.forEach(p => emailsByPlayerUid.set(p.uid, []));
+
+        const getBaseLivePoints = (p) => {
+            if (p.type === "vrs") {
+                return vrsLookup.byUid.get(p.uid) ?? vrsLookup.byName.get(p.name) ?? (Number(p.points) || 0);
+            }
+            return Number(p.points) || 0;
+        };
+
+        for (const t of allTournaments) {
+            if (visited.has(t.id)) continue;
+            const comp = [];
+            const q = [t.id];
+            visited.add(t.id);
+            while (q.length > 0) {
+                const cur = q.shift();
+                const obj = tMap.get(cur);
+                if (obj) comp.push(obj);
+                for (const nb of (adj.get(cur) || [])) {
+                    if (!visited.has(nb)) {
+                        visited.add(nb);
+                        q.push(nb);
+                    }
+                }
+            }
+
+            const compIds = new Set(comp.map(x => x.id));
+            const hasOutgoing = new Set();
+            comp.forEach(x => {
+                if (x.nextTournamentId && compIds.has(x.nextTournamentId)) hasOutgoing.add(x.id);
+                if (x.qualifiedFrom?.tournamentId && compIds.has(x.qualifiedFrom.tournamentId)) hasOutgoing.add(x.qualifiedFrom.tournamentId);
+            });
+            const roots = comp.filter(x => !hasOutgoing.has(x.id))
+                .sort((a, b) => (b.sortOrder ?? 0) - (a.sortOrder ?? 0) || (b.createdAt ?? 0) - (a.createdAt ?? 0));
+            const rootT = roots[0] || comp[0];
+            const chainRootId = rootT.id;
+
+            const levelMap = new Map([[chainRootId, 0]]);
+            const lq = [chainRootId];
+            while (lq.length > 0) {
+                const curId = lq.shift();
+                const curLvl = levelMap.get(curId);
+                const curObj = tMap.get(curId);
+                if (!curObj) continue;
+                const preds = [];
+                if (curObj.qualifiedFrom?.tournamentId && compIds.has(curObj.qualifiedFrom.tournamentId)) {
+                    preds.push(curObj.qualifiedFrom.tournamentId);
+                }
+                comp.forEach(other => {
+                    if (other.nextTournamentId === curId) preds.push(other.id);
+                });
+                preds.forEach(pid => {
+                    if (!levelMap.has(pid) || levelMap.get(pid) < curLvl + 1) {
+                        levelMap.set(pid, curLvl + 1);
+                        lq.push(pid);
+                    }
+                });
+            }
+
+            comp.forEach(x => {
+                if (!levelMap.has(x.id)) levelMap.set(x.id, 0);
+            });
+
+            const sortedMembers = [...comp].sort((a, b) => {
+                const la = levelMap.get(a.id) ?? 0;
+                const lb = levelMap.get(b.id) ?? 0;
+                if (la !== lb) return la - lb;
+                return (getTournamentDateBounds(b).start).localeCompare(getTournamentDateBounds(a).start);
+            });
+
+            const startDates = comp.map(x => getTournamentDateBounds(x).start).sort();
+            const chainStartDate = startDates[0] || "2025-01-01";
+            const regStart = addDaysISO(chainStartDate, -14);
+            const regEnd = addDaysISO(chainStartDate, -7);
+            const phase = gDate < regStart ? "before" : (gDate < regEnd ? "open" : "closed");
+
+            const tiers = [];
+            const manualPlayerUidsInChain = new Set();
+
+            sortedMembers.forEach(member => {
+                const split = splitBaseParticipantsByTier(member);
+                split.manualPlayers.forEach(mp => {
+                    if (mp.playerUid) manualPlayerUidsInChain.add(mp.playerUid);
+                });
+
+                if (member.useAutoInvites === false || member.invitesBaked) return;
+
+                const predSlots = member.qualifiedFrom?.slots?.length || 0;
+                if (split.hasStage2Direct) {
+                    const poBase = split.playoffsDirectBase.filter(p => p.type !== "player");
+                    const s1Base = split.stage1Base.filter(p => p.type !== "player");
+                    tiers.push({
+                        tournament: member,
+                        tierKey: "playoffs_direct",
+                        tierLabel: `${member.name} – Playoffs (Direkt-Invite)`,
+                        shortLabel: "Playoffs (Direkt-Invite)",
+                        capacity: Number(member.directInvites) || 0,
+                        baseNonPlayer: poBase.map(p => ({ ...p, livePoints: getBaseLivePoints(p) })),
+                        isOpenQualifier: false
+                    });
+                    tiers.push({
+                        tournament: member,
+                        tierKey: "stage1",
+                        tierLabel: `${member.name} – Gruppenphase`,
+                        shortLabel: "Gruppenphase",
+                        capacity: Math.max(0, ((member.groupCount || 1) * (member.groupSize || 16)) - predSlots),
+                        baseNonPlayer: s1Base.map(p => ({ ...p, livePoints: getBaseLivePoints(p) })),
+                        isOpenQualifier: false
+                    });
+                } else {
+                    const nonPlayer = split.allBase.filter(p => p.type !== "player");
+                    tiers.push({
+                        tournament: member,
+                        tierKey: "main",
+                        tierLabel: comp.length > 1 ? `${member.name}` : `${member.name} – Hauptfeld`,
+                        shortLabel: comp.length > 1 ? member.name : "Hauptfeld",
+                        capacity: Math.max(0, (Number(member.maxTeams) || 16) - predSlots),
+                        baseNonPlayer: nonPlayer.map(p => ({ ...p, livePoints: getBaseLivePoints(p) })),
+                        isOpenQualifier: Boolean(member.playoffType === "open_qualifier" || member.isOpenQualifier)
+                    });
+                }
+            });
+
+            const activeCandidates = [];
+            const declinedPlayers = [];
+            const expiredPendingPlayers = [];
+
+            players.forEach(p => {
+                if (manualPlayerUidsInChain.has(p.uid)) return;
+                const resp = getPlayerResponseForChain(p, compIds, chainRootId);
+                const entry = {
+                    playerUid: p.uid,
+                    uid: `player:${p.uid}`,
+                    username: p.username,
+                    name: getTeamName(p),
+                    points: Number(p.points) || 0,
+                    createdAt: p.createdAt || 0,
+                    response: resp
+                };
+                if (resp?.status === "declined") {
+                    declinedPlayers.push(entry);
+                } else if (phase === "closed" && resp?.status !== "accepted") {
+                    expiredPendingPlayers.push(entry);
+                } else if (phase !== "before") {
+                    activeCandidates.push(entry);
+                }
+            });
+
+            activeCandidates.sort((a, b) => b.points - a.points || a.createdAt - b.createdAt);
+
+            let remaining = [...activeCandidates];
+            const tierEvaluations = [];
+            const playerTierAssignment = new Map();
+
+            tiers.forEach(tier => {
+                const baseAsc = [...tier.baseNonPlayer].sort((a, b) => a.livePoints - b.livePoints);
+                const cappedBase = baseAsc.length > tier.capacity ? baseAsc.slice(baseAsc.length - tier.capacity) : baseAsc;
+                const emptyCount = Math.max(0, tier.capacity - cappedBase.length);
+                const hurdles = [...Array(emptyCount).fill(-1), ...cappedBase.map(b => b.livePoints)].slice(0, tier.capacity);
+
+                const m = findMaxQualifyingPlayers(remaining, hurdles);
+                const chosen = remaining.slice(0, m);
+                const displaceCount = Math.max(0, m - emptyCount);
+                const displacedBase = cappedBase.slice(0, displaceCount);
+                const displacedSet = new Set(displacedBase.map(d => d.uid));
+
+                const evalObj = {
+                    ...tier,
+                    hurdles,
+                    emptyCount,
+                    invitedPlayers: chosen,
+                    displacedBase,
+                    displacedBaseUids: displacedSet
+                };
+                tierEvaluations.push(evalObj);
+
+                chosen.forEach(cp => {
+                    playerTierAssignment.set(cp.playerUid, evalObj);
+                });
+
+                if (!tierResultsByTournament.has(tier.tournament.id)) {
+                    tierResultsByTournament.set(tier.tournament.id, {});
+                }
+                tierResultsByTournament.get(tier.tournament.id)[tier.tierKey] = evalObj;
+
+                remaining = remaining.slice(m);
+            });
+
+            // Auch wenn ein Spieler in der geschlossenen Phase gar nicht akzeptiert hat, ermitteln ob er eigentlich eingeladen worden wäre (für Abgelaufen-E-Mail)
+            const circuitObj = {
+                chainRootId,
+                rootName: rootT.name,
+                members: sortedMembers,
+                chainStartDate,
+                regStart,
+                regEnd,
+                phase,
+                tiers: tierEvaluations,
+                activeCandidates,
+                declinedPlayers,
+                expiredPendingPlayers,
+                remainingUnplaced: remaining,
+                playerTierAssignment
+            };
+            circuits.push(circuitObj);
+            comp.forEach(m => tournamentToCircuit.set(m.id, circuitObj));
+
+            // E-Mails pro Spieler aufbauen
+            if (phase !== "before" && tiers.length > 0) {
+                players.forEach(p => {
+                    if (manualPlayerUidsInChain.has(p.uid)) return;
+                    const resp = getPlayerResponseForChain(p, compIds, chainRootId);
+                    const assignedTier = playerTierAssignment.get(p.uid) || null;
+                    const myPts = Number(p.points) || 0;
+                    const list = emailsByPlayerUid.get(p.uid) || [];
+
+                    if (resp?.status === "declined") {
+                        list.push({
+                            id: `mail-${chainRootId}-${p.uid}`,
+                            chainRootId,
+                            tournamentId: resp.tierTournamentId || chainRootId,
+                            circuitTitle: rootT.name,
+                            chainNames: sortedMembers.map(m => m.name),
+                            tierLabel: resp.tierLabel || rootT.name,
+                            sender: `Tournament Organizer · ${rootT.name}`,
+                            dateLabel: formatDateDE(resp.gameDate || regStart),
+                            deadlineLabel: formatDateDE(addDaysISO(regEnd, -1)),
+                            status: "declined",
+                            canRespond: false,
+                            myPoints: myPts,
+                            subject: `Abgelehnt: Turnier-Einladung für ${rootT.name}`,
+                            body: `Du hast die Einladung für diesen Turnier-Verbund abgelehnt. Der freigewordene Platz wurde automatisch an das nächste berechtigte Team weitergegeben.`
+                        });
+                    } else if (assignedTier) {
+                        const isAccepted = resp?.status === "accepted";
+                        const shiftedTier = isAccepted && resp.tierKey && (resp.tierTournamentId !== assignedTier.tournament.id || resp.tierKey !== assignedTier.tierKey);
+                        let status = "pending";
+                        if (isAccepted) status = "accepted";
+                        else if (phase === "closed") status = "expired";
+
+                        list.push({
+                            id: `mail-${chainRootId}-${p.uid}`,
+                            chainRootId,
+                            tournamentId: assignedTier.tournament.id,
+                            tierKey: assignedTier.tierKey,
+                            tierLabel: assignedTier.tierLabel,
+                            circuitTitle: rootT.name,
+                            chainNames: sortedMembers.map(m => m.name),
+                            sender: `Tournament Organizer · ${rootT.name}`,
+                            dateLabel: formatDateDE(regStart),
+                            deadlineLabel: formatDateDE(addDaysISO(regEnd, -1)),
+                            status,
+                            shiftedTier,
+                            previousTierLabel: resp?.tierLabel || "",
+                            canRespond: phase === "open" && !isAccepted,
+                            myPoints: myPts,
+                            subject: shiftedTier
+                                ? `Update (${assignedTier.shortLabel}): ${rootT.name}`
+                                : `Turnier-Einladung: ${assignedTier.tierLabel}`,
+                            body: isAccepted
+                                ? (shiftedTier
+                                    ? `Durch VRS-Verschiebungen oder Absagen anderer Teams startet dein Team nun in folgender Stufe: ${assignedTier.tierLabel}. Deine Anmeldung für den Verbund ist weiterhin aktiv!`
+                                    : `Deine Teilnahme für ${assignedTier.tierLabel} (${myPts} VRS-Punkte) ist bestätigt. Bei aufeinander aufbauenden Turnieren gilt deine Anmeldung automatisch für den gesamten Turnier-Verbund.`)
+                                : (phase === "open"
+                                    ? `Aufgrund eures VRS-Rankings (${myPts} Punkte) laden wir euch offiziell zu „${assignedTier.tierLabel}“ ein. Bitte bestätige oder lehne die Teilnahme bis zum ${formatDateDE(addDaysISO(regEnd, -1))} ab. Hinweis: Deine Entscheidung gilt für den gesamten Verbund (${sortedMembers.map(x => x.name).join(" → ")}).`
+                                    : `Die Anmeldefrist (${formatDateDE(addDaysISO(regEnd, -1))}) für ${assignedTier.tierLabel} ist abgelaufen, ohne dass die Einladung bestätigt wurde.`)
+                        });
+                    } else if (resp?.status === "accepted") {
+                        // Spieler hatte angenommen, wurde aber während der Anmeldephase von punktstärkeren Teams verdrängt!
+                        list.push({
+                            id: `mail-${chainRootId}-${p.uid}`,
+                            chainRootId,
+                            tournamentId: chainRootId,
+                            circuitTitle: rootT.name,
+                            chainNames: sortedMembers.map(m => m.name),
+                            tierLabel: "Ausgeschieden (VRS zu niedrig)",
+                            sender: `Tournament Organizer · ${rootT.name}`,
+                            dateLabel: formatDateDE(gDate),
+                            deadlineLabel: formatDateDE(addDaysISO(regEnd, -1)),
+                            status: "info",
+                            canRespond: false,
+                            myPoints: myPts,
+                            subject: `VRS-Update: Platz in ${rootT.name} verloren`,
+                            body: `Andere Spielerteams mit höherem VRS-Ranking haben sich angemeldet. Dein aktuelles VRS-Ranking (${myPts} Punkte) reicht leider nicht mehr für einen Startplatz im Verbund „${rootT.name}“ aus.`
+                        });
+                    } else if (phase === "closed" && expiredPendingPlayers.some(ep => ep.playerUid === p.uid)) {
+                        // Prüfen, ob er theoretisch mit seinen Punkten während der offenen Phase eingeladen gewesen wäre
+                        const lowestTier = tierEvaluations[tierEvaluations.length - 1];
+                        if (lowestTier) {
+                            const others = activeCandidates.filter(c => c.playerUid !== p.uid);
+                            const needed = computeMinPointsNeededForTier(others, lowestTier.hurdles);
+                            if (needed !== null && myPts >= needed) {
+                                list.push({
+                                    id: `mail-${chainRootId}-${p.uid}`,
+                                    chainRootId,
+                                    tournamentId: chainRootId,
+                                    circuitTitle: rootT.name,
+                                    chainNames: sortedMembers.map(m => m.name),
+                                    tierLabel: lowestTier.tierLabel,
+                                    sender: `Tournament Organizer · ${rootT.name}`,
+                                    dateLabel: formatDateDE(regStart),
+                                    deadlineLabel: formatDateDE(addDaysISO(regEnd, -1)),
+                                    status: "expired",
+                                    canRespond: false,
+                                    myPoints: myPts,
+                                    subject: `Abgelaufen: Einladung für ${rootT.name}`,
+                                    body: `Die Anmeldefrist ist am ${formatDateDE(addDaysISO(regEnd, -1))} abgelaufen. Da keine Bestätigung eingegangen ist, wurde kein Startplatz vergeben.`
+                                });
+                            }
+                        }
+                    }
+
+                    emailsByPlayerUid.set(p.uid, list);
+                });
+            }
+        }
+
+        return { circuits, tournamentToCircuit, tierResultsByTournament, emailsByPlayerUid, vrsLookup };
+    }
+
+    // ==================== TURNIER-GRAPH AUFLÖSEN ====================
+    function resolveTournamentGraph(tournament, visited = new Set(), inviteCache = null) {
         if (!tournament || visited.has(tournament.id)) {
-            return { participants: [], autoSlots: [], matchSlots: {}, matchWinners: {}, matchSchedules: {}, swissStandings: {}, rrStandings: {}, stageAdvancers: [] };
+            return {
+                participants: [], autoSlots: [], matchSlots: {}, matchWinners: {},
+                matchSchedules: {}, defaultWins: {}, swissStandings: {}, rrStandings: {},
+                stageAdvancers: [], r32Winners: []
+            };
         }
         visited.add(tournament.id);
 
+        const invData = inviteCache || computeAllCircuitsInviteData();
+        const circuit = invData.tournamentToCircuit.get(tournament.id) || null;
+        const tTiers = invData.tierResultsByTournament.get(tournament.id) || {};
+        const vrsLookup = invData.vrsLookup;
+
         const hideSpoilers = !isAdmin();
         const gDate = currentGameDate();
-        const manual = Array.isArray(tournament.participants) ? tournament.participants : [];
+        const rawManual = Array.isArray(tournament.participants) ? tournament.participants : [];
         const matchesMap = tournament.matches || {};
         const winnersMap = tournament.winners || {};
         const matchSchedules = tournament.matchSchedules || {};
+        const defaultWins = tournament.defaultWins || {};
 
         let predGraph = null;
         if (tournament.qualifiedFrom?.tournamentId) {
             const predT = getTournamentById(tournament.qualifiedFrom.tournamentId);
-            if (predT) predGraph = resolveTournamentGraph(predT, new Set(visited));
+            if (predT) predGraph = resolveTournamentGraph(predT, new Set(visited), invData);
         }
 
         const autoSlots = [];
         const participants = [];
         const seen = new Set();
 
+        // 1. Effektive Basis-Teilnehmer + VRS-Verdrängung anwenden (sobald Anmeldephase vorbei ist, oder für Admin nach Anmeldeschluss)
+        const applyDynamicDisplacement = Boolean(
+            tournament.useAutoInvites !== false &&
+            !tournament.invitesBaked &&
+            circuit &&
+            circuit.phase === "closed"
+        );
+
+        const displacedAll = new Set();
+        const extraAcceptedPlayers = [];
+
+        if (applyDynamicDisplacement) {
+            Object.values(tTiers).forEach(tr => {
+                tr.displacedBaseUids.forEach(u => displacedAll.add(u));
+                tr.invitedPlayers.forEach(ip => {
+                    if (ip.response?.status === "accepted") {
+                        extraAcceptedPlayers.push({
+                            uid: ip.uid,
+                            type: "player",
+                            playerUid: ip.playerUid,
+                            username: ip.username,
+                            name: ip.name,
+                            points: ip.points,
+                            slotGroup: tr.tierKey === "playoffs_direct" ? "playoffs_direct" : "stage1",
+                            invitedViaEmail: true
+                        });
+                    }
+                });
+            });
+        }
+
+        // Qualifikanten aus Vorgängerturnier
         if (tournament.qualifiedFrom && predGraph) {
             const predAdv = predGraph.stageAdvancers || [];
             (tournament.qualifiedFrom.slots || []).forEach((slot, idx) => {
@@ -613,12 +1196,32 @@ export function createTournamentsModule(deps) {
                 autoSlots.push({ matchId: slot.matchId, label: slot.label, participant: pObj ? { ...pObj, autoQualified: true } : null });
                 if (pObj && !seen.has(pObj.uid)) {
                     seen.add(pObj.uid);
-                    participants.push({ ...pObj, autoQualified: true });
+                    participants.push({ ...pObj, autoQualified: true, slotGroup: "stage1" });
                 }
             });
         }
 
-        manual.forEach(p => {
+        // Manuelle / VRS Basis-Teilnehmer minus verdrängte Teams + bestätigte Einladungen
+        const keptManual = rawManual.filter(p => !displacedAll.has(p.uid));
+        const livePts = (p) => {
+            if (p.type === "player") {
+                const live = getPlayers().find(pl => pl.uid === p.playerUid || pl.username === p.username);
+                return live ? (Number(live.points) || 0) : (Number(p.points) || 0);
+            }
+            if (p.type === "vrs") {
+                return vrsLookup.byUid.get(p.uid) ?? vrsLookup.byName.get(p.name) ?? (Number(p.points) || 0);
+            }
+            return Number(p.points) || 0;
+        };
+
+        const combinedDirect = [...keptManual, ...extraAcceptedPlayers];
+        if (applyDynamicDisplacement && extraAcceptedPlayers.length > 0) {
+            // Nach VRS-Punkten absteigend sortieren (innerhalb gleicher slotGroup), damit verschobene Teams exakt nachrücken
+            const groupOrder = (p) => (p.slotGroup === "playoffs_direct" ? 1 : 0);
+            combinedDirect.sort((a, b) => groupOrder(a) - groupOrder(b) || livePts(b) - livePts(a));
+        }
+
+        combinedDirect.forEach(p => {
             if (!seen.has(p.uid)) {
                 seen.add(p.uid);
                 participants.push(p);
@@ -627,6 +1230,7 @@ export function createTournamentsModule(deps) {
 
         const matchSlots = {};
         const matchWinners = {};
+        const r32WinnerSet = new Set();
 
         const isMatchFinishedForView = (m, fallbackIso = "") => {
             if (!hideSpoilers) return true;
@@ -637,6 +1241,7 @@ export function createTournamentsModule(deps) {
         const resolveMatch = (m, groupSlice = [], roundReady = true, fallbackIso = "") => {
             const stored = matchesMap[m.id];
             const row = [null, null];
+            const ignoreFromMatches = Boolean(tournament.isQuali32 && m.id.startsWith("r16-"));
 
             for (let s = 0; s < 2; s++) {
                 if (hideSpoilers && !roundReady) {
@@ -645,7 +1250,7 @@ export function createTournamentsModule(deps) {
                 }
 
                 let feedFinished = true;
-                if (hideSpoilers) {
+                if (hideSpoilers && !ignoreFromMatches) {
                     if (Array.isArray(m.fromMatches) && m.fromMatches[s]) feedFinished = Boolean(matchWinners[m.fromMatches[s]]);
                     else if (Array.isArray(m.fromLosers) && m.fromLosers[s]) feedFinished = Boolean(matchWinners[m.fromLosers[s]]);
                     else if (Array.isArray(m.fromMixed) && m.fromMixed[s]) feedFinished = Boolean(matchWinners[m.fromMixed[s].id]);
@@ -654,39 +1259,43 @@ export function createTournamentsModule(deps) {
 
                 if (!feedFinished) {
                     row[s] = null;
-                } else if (Array.isArray(stored) && stored[s] !== undefined && stored[s] !== null) {
+                } else if (Array.isArray(stored) && stored[s] !== undefined && stored[s] !== null && stored[s] !== "") {
                     row[s] = stored[s];
                 } else if (Array.isArray(m.initialSlotIndices) && groupSlice[m.initialSlotIndices[s]]) {
                     row[s] = groupSlice[m.initialSlotIndices[s]].uid;
-                } else if (Array.isArray(m.fromMatches) && m.fromMatches[s]) {
+                } else if (!ignoreFromMatches && Array.isArray(m.fromMatches) && m.fromMatches[s]) {
                     row[s] = matchWinners[m.fromMatches[s]] || null;
-                } else if (Array.isArray(m.fromLosers) && m.fromLosers[s]) {
+                } else if (!ignoreFromMatches && Array.isArray(m.fromLosers) && m.fromLosers[s]) {
                     const srcId = m.fromLosers[s];
                     const w = matchWinners[srcId], sl = matchSlots[srcId] || [null, null];
-                    row[s] = (w && sl[0] && sl[1]) ? (w === sl[0] ? sl[1] : sl[0]) : null;
-                } else if (Array.isArray(m.fromMixed) && m.fromMixed[s]) {
+                    row[s] = (w && sl[0] && sl[1] && sl[0] !== "__BYE__" && sl[1] !== "__BYE__") ? (w === sl[0] ? sl[1] : sl[0]) : null;
+                } else if (!ignoreFromMatches && Array.isArray(m.fromMixed) && m.fromMixed[s]) {
                     const cfg = m.fromMixed[s];
                     const w = matchWinners[cfg.id], sl = matchSlots[cfg.id] || [null, null];
-                    row[s] = cfg.type === "winner" ? (w || null) : ((w && sl[0] && sl[1]) ? (w === sl[0] ? sl[1] : sl[0]) : null);
-                } else if (Array.isArray(m.fromPredecessor) && m.fromPredecessor[s] && predGraph) {
+                    row[s] = cfg.type === "winner" ? (w || null) : ((w && sl[0] && sl[1] && sl[0] !== "__BYE__" && sl[1] !== "__BYE__") ? (w === sl[0] ? sl[1] : sl[0]) : null);
+                } else if (!ignoreFromMatches && Array.isArray(m.fromPredecessor) && m.fromPredecessor[s] && predGraph) {
                     row[s] = predGraph.matchWinners[m.fromPredecessor[s]] || null;
                 }
 
-                if (row[s] && !seen.has(row[s])) row[s] = null;
+                if (row[s] && row[s] !== "__BYE__" && !seen.has(row[s])) row[s] = null;
+                if (hideSpoilers && ignoreFromMatches && row[s] && !r32WinnerSet.has(row[s])) {
+                    row[s] = null;
+                }
             }
 
             matchSlots[m.id] = row;
             const rawW = isMatchFinishedForView(m, fallbackIso) ? (winnersMap[m.id] || null) : null;
-            matchWinners[m.id] = (rawW && (rawW === row[0] || rawW === row[1])) ? rawW : null;
+            matchWinners[m.id] = (rawW && rawW !== "__BYE__" && (rawW === row[0] || rawW === row[1])) ? rawW : null;
         };
 
         const swissStandings = {};
         const rrStandings = {};
         const stageAdvancers = [];
 
-        // 1. Swiss (Vorrunde muss beendet sein, bevor nächste Runde Spielern angezeigt wird)
+        // 1. Swiss
+        const stage1Pool = getStage1ParticipantsRaw(tournament, participants);
         (tournament.swissGroups || []).forEach((g, gIdx) => {
-            const gTeams = participants.slice(gIdx * g.teamCount, (gIdx + 1) * g.teamCount);
+            const gTeams = stage1Pool.slice(gIdx * g.teamCount, (gIdx + 1) * g.teamCount);
             const table = {};
             gTeams.forEach((p, idx) => { table[p.uid] = { uid: p.uid, seed: idx + 1, wins: 0, losses: 0, opponents: new Set() }; });
 
@@ -701,14 +1310,14 @@ export function createTournamentsModule(deps) {
                 r.matches.forEach(m => {
                     resolveMatch(m, [], roundReady, r.dateISO || "");
                     const sl = matchSlots[m.id], w = matchWinners[m.id];
-                    if (sl[0] && sl[1]) {
+                    if (sl[0] && sl[1] && sl[0] !== "__BYE__" && sl[1] !== "__BYE__") {
                         if (table[sl[0]]) table[sl[0]].opponents.add(sl[1]);
                         if (table[sl[1]]) table[sl[1]].opponents.add(sl[0]);
                     }
                     if (w && sl[0] && sl[1]) {
                         const l = w === sl[0] ? sl[1] : sl[0];
                         if (table[w]) table[w].wins++;
-                        if (table[l]) table[l].losses++;
+                        if (l && l !== "__BYE__" && table[l]) table[l].losses++;
                     }
                 });
             });
@@ -728,7 +1337,7 @@ export function createTournamentsModule(deps) {
 
         // 3. Round-Robin
         (tournament.rrGroups || []).forEach((g, gIdx) => {
-            const gTeams = participants.slice(gIdx * g.size, (gIdx + 1) * g.size);
+            const gTeams = stage1Pool.slice(gIdx * g.size, (gIdx + 1) * g.size);
             const table = {};
             gTeams.forEach((p, idx) => { table[p.uid] = { uid: p.uid, seed: idx + 1, played: 0, wins: 0, losses: 0, points: 0 }; });
             g.rounds.forEach(r => r.matches.forEach(m => {
@@ -737,7 +1346,7 @@ export function createTournamentsModule(deps) {
                 if (w && sl[0] && sl[1]) {
                     const l = w === sl[0] ? sl[1] : sl[0];
                     if (table[w]) { table[w].played++; table[w].wins++; table[w].points += 3; }
-                    if (table[l]) { table[l].played++; table[l].losses++; }
+                    if (l && l !== "__BYE__" && table[l]) { table[l].played++; table[l].losses++; }
                 }
             }));
             const sorted = Object.values(table).sort((a, b) => b.points - a.points || b.wins - a.wins || a.losses - b.losses || a.seed - b.seed);
@@ -753,72 +1362,278 @@ export function createTournamentsModule(deps) {
             });
         }
 
-        // 5. Playoffs
-        (tournament.rounds || []).forEach(r => r.days.forEach(d => d.matches.forEach(m => resolveMatch(m, [], true, d.dateISO || ""))));
+        // 5. Playoffs / Quali32 / Open Qualifier
+        const roundsList = tournament.rounds || [];
+        roundsList.forEach(r => {
+            r.days.forEach(d => d.matches.forEach(m => {
+                resolveMatch(m, [], true, d.dateISO || "");
+                if (tournament.isQuali32 && r.id === "r32" && matchWinners[m.id]) {
+                    r32WinnerSet.add(matchWinners[m.id]);
+                }
+            }));
+        });
 
-        // 6. Double Elim Qualifier / Quali32 Qualifikanten
+        const r32Winners = Array.from(r32WinnerSet);
+
+        // 6. Qualifikanten für Folge-Turniere sammeln
         if (tournament.isDoubleElimQuali && tournament.deQualiMeta?.qualifierMatchIds) {
             tournament.deQualiMeta.qualifierMatchIds.forEach(qId => {
                 if (matchWinners[qId]) stageAdvancers.push(matchWinners[qId]);
             });
         } else if (tournament.isQuali32) {
-            (tournament.rounds?.[1]?.days || []).flatMap(d => d.matches).forEach(m => {
+            (roundsList.find(r => r.id === "r16")?.days || []).flatMap(d => d.matches).forEach(m => {
+                if (matchWinners[m.id]) stageAdvancers.push(matchWinners[m.id]);
+            });
+        } else if (tournament.playoffType === "open_qualifier" || tournament.isOpenQualifier) {
+            const finalRound = roundsList[roundsList.length - 1];
+            (finalRound?.days || []).flatMap(d => d.matches).forEach(m => {
+                if (matchWinners[m.id]) stageAdvancers.push(matchWinners[m.id]);
+            });
+        } else if (!tournament.hasStage1 && !tournament.hasPlayIn && roundsList.length > 0) {
+            const finalRound = roundsList[roundsList.length - 1];
+            (finalRound.days || []).flatMap(d => d.matches).forEach(m => {
                 if (matchWinners[m.id]) stageAdvancers.push(matchWinners[m.id]);
             });
         }
 
-        return { participants, autoSlots, matchSlots, matchWinners, matchSchedules, swissStandings, rrStandings, stageAdvancers };
+        return {
+            participants,
+            autoSlots,
+            matchSlots,
+            matchWinners,
+            matchSchedules,
+            defaultWins,
+            swissStandings,
+            rrStandings,
+            stageAdvancers,
+            r32Winners
+        };
     }
 
-    // ==================== VRS, TEILNEHMER & MATCH-KARTEN ====================
-    function getVrsEntriesForDate(date) {
-        const list = getVrsRankingsMap()[date] || [];
-        const counts = {};
-        return list.map((item, idx) => {
-            const name = String(item[0]);
-            counts[name] = (counts[name] || 0) + 1;
-            return { uid: `vrs:${name}#${counts[name]}`, rank: idx + 1, name, points: Number(item[1]) || 0, region: item[2] ? String(item[2]) : "" };
-        });
+    function getStage1ParticipantsRaw(t, participants) {
+        if (!(t.hasStage1 && t.hasPlayoffs && Number(t.directInvites) > 0)) return participants;
+        const cap = (t.groupCount || 1) * (t.groupSize || 16);
+        const explicit = participants.filter(p => p.slotGroup === "stage1" || p.autoQualified);
+        const untagged = participants.filter(p => !p.slotGroup && !p.autoQualified);
+        return [...explicit, ...untagged].slice(0, cap);
     }
 
+    function getPlayoffDirectParticipantsRaw(t, participants) {
+        if (!(t.hasStage1 && t.hasPlayoffs && Number(t.directInvites) > 0)) return participants;
+        const cap = (t.groupCount || 1) * (t.groupSize || 16);
+        const explicitDirect = participants.filter(p => p.slotGroup === "playoffs_direct");
+        const explicitStage1Count = participants.filter(p => p.slotGroup === "stage1" || p.autoQualified).length;
+        const untagged = participants.filter(p => !p.slotGroup && !p.autoQualified);
+        const remainingForStage1 = Math.max(0, cap - explicitStage1Count);
+        return [...explicitDirect, ...untagged.slice(remainingForStage1)];
+    }
+    // ==================== TEILNEHMER-AUFLÖSUNG & SICHTBARKEIT ====================
     function getResolvedParticipant(uid, participants) {
         if (!uid) return null;
+        if (uid === "__BYE__") {
+            return { uid: "__BYE__", displayName: "Freilos (BYE)", icon: "", isBye: true, badgeText: "Freilos" };
+        }
         const found = participants.find(p => p.uid === uid);
         if (!found) return null;
         if (found.type === "player") {
             const live = getPlayers().find(p => p.uid === found.playerUid || p.username === found.username);
             return { ...found, displayName: live ? getTeamName(live) : found.name, icon: "🛡️", badgeText: `Spieler (${found.username})` };
         }
-        return { ...found, displayName: found.name, icon: "🏆", badgeText: found.rank ? `VRS #${found.rank} (${found.points} Pkt)` : "VRS-Team" };
+        if (found.type === "manual") {
+            return { ...found, displayName: found.name, icon: "", badgeText: "Manuelles Team" };
+        }
+        return { ...found, displayName: found.name, icon: "", badgeText: found.rank ? `VRS #${found.rank} (${found.points} Pkt)` : "VRS-Team" };
     }
 
-    function buildMatchSlotMarkup(tId, match, slotIdx, assignedUid, winnerUid, participants, admin, preferredUids = []) {
+    function formatParticipantLabel(info) {
+        if (!info) return "";
+        return `${info.icon ? `${info.icon} ` : ""}${esc(info.displayName)}`;
+    }
+
+    function getTournamentVisibilityInfo(t, invData = null) {
+        const bounds = getTournamentDateBounds(t);
+        const revealDate = addDaysISO(bounds.start, -7);
+        const gDate = currentGameDate();
+        const canSeeLineupAndBracket = isAdmin() || gDate >= revealDate;
+
+        const data = invData || computeAllCircuitsInviteData();
+        const circuit = data.tournamentToCircuit.get(t.id) || null;
+        const user = getCurrentUser();
+        let myLowRankNotice = null;
+        let myHigherTierNotice = null;
+        let myInvitedNotice = null;
+
+        if (!isAdmin() && user?.role === "player" && circuit && !canSeeLineupAndBracket && t.useAutoInvites !== false) {
+            const myPlayer = getPlayers().find(p => p.uid === user.uid);
+            const myPts = Number(myPlayer?.points) || 0;
+            const compIds = new Set(circuit.members.map(m => m.id));
+            const resp = myPlayer ? getPlayerResponseForChain(myPlayer, compIds, circuit.chainRootId) : null;
+            const assigned = circuit.playerTierAssignment.get(user.uid) || null;
+
+            if (circuit.phase === "open") {
+                if (resp?.status === "declined") {
+                    myHigherTierNotice = "Du hast die Einladung für diesen Turnier-Verbund abgelehnt.";
+                } else if (assigned) {
+                    if (assigned.tournament.id === t.id) {
+                        myInvitedNotice = resp?.status === "accepted"
+                            ? `Dein Team ist für „${assigned.shortLabel}“ bestätigt.`
+                            : `Dein Team hat eine offene Turnier-Einladung für „${assigned.shortLabel}“ im Postfach (Managing → E-Mails)!`;
+                    } else {
+                        const tLevel = circuit.members.findIndex(m => m.id === t.id);
+                        const aLevel = circuit.members.findIndex(m => m.id === assigned.tournament.id);
+                        if (aLevel >= 0 && aLevel < tLevel) {
+                            myHigherTierNotice = `Dein Team (${myPts} Pkt.) ist durch das VRS-Ranking bereits für ein höheres Turnier im Verbund (${assigned.tournament.name}) eingeladen!`;
+                        } else {
+                            const tTiers = Object.values(data.tierResultsByTournament.get(t.id) || {});
+                            const lowestTTier = tTiers[tTiers.length - 1];
+                            if (lowestTTier) {
+                                const others = circuit.activeCandidates.filter(c => c.playerUid !== user.uid);
+                                const needed = computeMinPointsNeededForTier(others, lowestTTier.hurdles);
+                                myLowRankNotice = needed !== null
+                                    ? `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist zu niedrig, um sich direkt für dieses Turnier anzumelden (aktuell mindestens ${needed} Pkt. erforderlich).`
+                                    : `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist für dieses Turnier zu niedrig.`;
+                            }
+                        }
+                    }
+                } else {
+                    const tTiers = Object.values(data.tierResultsByTournament.get(t.id) || {});
+                    const lowestTTier = tTiers[tTiers.length - 1];
+                    if (lowestTTier) {
+                        const others = circuit.activeCandidates.filter(c => c.playerUid !== user.uid);
+                        const needed = computeMinPointsNeededForTier(others, lowestTTier.hurdles);
+                        myLowRankNotice = needed !== null
+                            ? `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist zu niedrig, um sich für dieses Turnier anzumelden (aktuell mindestens ${needed} Pkt. erforderlich).`
+                            : `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist zu niedrig, um sich für dieses Turnier anzumelden.`;
+                    }
+                }
+            }
+        }
+
+        return {
+            canSeeLineupAndBracket,
+            revealDate,
+            bounds,
+            circuit,
+            myLowRankNotice,
+            myHigherTierNotice,
+            myInvitedNotice
+        };
+    }
+
+    // ==================== RUNDEN-DEDUPLIZIERUNG & MATCH-SLOTS ====================
+    function getScopeMatchIds(t, matchId) {
+        if (!t) return [matchId];
+
+        for (const r of (t.rounds || [])) {
+            const ids = (r.days || []).flatMap(d => (d.matches || []).map(m => m.id));
+            if (ids.includes(matchId)) return ids;
+        }
+
+        for (let gIdx = 0; gIdx < (t.swissGroups || []).length; gIdx++) {
+            const g = t.swissGroups[gIdx];
+            for (let rIdx = 0; rIdx < (g.rounds || []).length; rIdx++) {
+                const ids = (g.rounds[rIdx].matches || []).map(m => m.id);
+                if (ids.includes(matchId)) {
+                    if (rIdx === 0) {
+                        return (t.swissGroups || []).flatMap(sg => (sg.rounds?.[0]?.matches || []).map(m => m.id));
+                    }
+                    return ids;
+                }
+            }
+        }
+
+        for (const g of (t.deGroups || [])) {
+            const found = (g.matches || []).find(m => m.id === matchId);
+            if (found) {
+                if (found.round === "Opening") {
+                    return (t.deGroups || []).flatMap(dg => (dg.matches || []).filter(x => x.round === "Opening").map(x => x.id));
+                }
+                return (g.matches || []).filter(x => x.round === found.round).map(x => x.id);
+            }
+        }
+
+        for (const g of (t.rrGroups || [])) {
+            for (let rIdx = 0; rIdx < (g.rounds || []).length; rIdx++) {
+                const ids = (g.rounds[rIdx].matches || []).map(m => m.id);
+                if (ids.includes(matchId)) {
+                    if (rIdx === 0) {
+                        return (t.rrGroups || []).flatMap(rg => (rg.rounds?.[0]?.matches || []).map(m => m.id));
+                    }
+                    return ids;
+                }
+            }
+        }
+
+        if (t.playInStage) {
+            const ids = (t.playInStage.rounds || []).flatMap(r => (r.days || []).flatMap(d => (d.matches || []).map(m => m.id)));
+            if (ids.includes(matchId)) return ids;
+        }
+
+        return [matchId];
+    }
+
+    function getUsedUidsInMatchScope(t, matchId, currentSlotIdx, graph) {
+        const used = new Set();
+        const scopeIds = getScopeMatchIds(t, matchId);
+        scopeIds.forEach(otherId => {
+            const slots = graph.matchSlots[otherId] || [null, null];
+            if (otherId !== matchId) {
+                if (slots[0] && slots[0] !== "__BYE__") used.add(slots[0]);
+                if (slots[1] && slots[1] !== "__BYE__") used.add(slots[1]);
+            } else {
+                const otherSlot = slots[1 - currentSlotIdx];
+                if (otherSlot && otherSlot !== "__BYE__") used.add(otherSlot);
+            }
+        });
+        return used;
+    }
+
+    function getAllowedParticipantsForMatch(t, match, slotIdx, graph, currentAssignedUid) {
+        let pool = graph.participants;
+        if (t?.isQuali32 && match.id.startsWith("r16-")) {
+            const winSet = new Set(graph.r32Winners || []);
+            pool = pool.filter(p => winSet.has(p.uid) || p.uid === currentAssignedUid);
+        }
+        const used = getUsedUidsInMatchScope(t, match.id, slotIdx, graph);
+        return pool.filter(p => !used.has(p.uid) || p.uid === currentAssignedUid);
+    }
+
+    function buildMatchSlotMarkup(tId, match, slotIdx, assignedUid, winnerUid, graph, admin, preferredUids = []) {
+        const participants = graph.participants;
         const resolved = getResolvedParticipant(assignedUid, participants);
         const isWin = Boolean(winnerUid && assignedUid && winnerUid === assignedUid);
-        const isLoss = Boolean(winnerUid && assignedUid && winnerUid !== assignedUid);
+        const isLoss = Boolean(winnerUid && assignedUid && assignedUid !== "__BYE__" && winnerUid !== assignedUid);
 
         if (!admin) {
             if (!resolved) {
                 const hint = match.slotHints?.[slotIdx] ? `TBD (${match.slotHints[slotIdx]})` : "TBD";
                 return `<div class="match-team-row tbd"><span>${esc(hint)}</span><span>–</span></div>`;
             }
-            return `<div class="match-team-row ${isWin ? "winner" : (isLoss ? "loser" : "")}"><span>${resolved.icon} ${esc(resolved.displayName)}</span><span style="font-size:.72rem;">${isWin ? "🏆 Sieger" : (resolved.type === "player" ? "Spieler" : "VRS")}</span></div>`;
+            if (resolved.isBye) {
+                return `<div class="match-team-row tbd"><span>— Freilos (BYE) —</span><span>W/O</span></div>`;
+            }
+            return `<div class="match-team-row ${isWin ? "winner" : (isLoss ? "loser" : "")}"><span>${formatParticipantLabel(resolved)}</span><span style="font-size:.72rem;">${isWin ? "Sieger" : (resolved.type === "player" ? "Spieler" : "VRS")}</span></div>`;
         }
 
+        const tObj = getTournamentById(tId);
+        const allowed = getAllowedParticipantsForMatch(tObj, match, slotIdx, graph, assignedUid);
         const prefSet = new Set(preferredUids.filter(Boolean));
-        const sorted = [...participants].sort((a, b) => (prefSet.has(a.uid) ? 0 : 1) - (prefSet.has(b.uid) ? 0 : 1));
+        const sorted = [...allowed].sort((a, b) => (prefSet.has(a.uid) ? 0 : 1) - (prefSet.has(b.uid) ? 0 : 1));
         const options = sorted.map(p => {
             const info = getResolvedParticipant(p.uid, participants);
-            return `<option value="${esc(p.uid)}" ${p.uid === assignedUid ? "selected" : ""}>${prefSet.has(p.uid) ? "★ " : ""}${info.icon} ${esc(info.displayName)}</option>`;
+            return `<option value="${esc(p.uid)}" ${p.uid === assignedUid ? "selected" : ""}>${prefSet.has(p.uid) ? "★ " : ""}${formatParticipantLabel(info)}</option>`;
         }).join("");
         const tbd = match.slotHints?.[slotIdx] ? `-- TBD (${match.slotHints[slotIdx]}) --` : "-- TBD (Offen) --";
+        const canWin = Boolean(assignedUid && assignedUid !== "__BYE__");
 
         return `
             <div class="match-admin-slot">
                 <select class="match-team-select ${isWin ? "is-winner" : ""}" data-action="set-match-slot" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" data-slot="${slotIdx}">
-                    <option value="">${esc(tbd)}</option>${options}
+                    <option value="">${esc(tbd)}</option>
+                    <option value="__BYE__" ${assignedUid === "__BYE__" ? "selected" : ""}>— Freilos (BYE) —</option>
+                    ${options}
                 </select>
-                <button type="button" class="btn-winner-toggle ${isWin ? "active" : ""}" data-action="toggle-winner" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" data-uid="${esc(assignedUid || "")}" ${!assignedUid ? "disabled" : ""} title="Als Sieger festlegen">🏆</button>
+                <button type="button" class="btn-winner-toggle ${isWin ? "active" : ""}" data-action="toggle-winner" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" data-uid="${esc(assignedUid || "")}" ${!canWin ? "disabled" : ""} title="Als Sieger festlegen">🏆</button>
             </div>
         `;
     }
@@ -826,6 +1641,7 @@ export function createTournamentsModule(deps) {
     function renderMatchCard(tId, match, defaultDateLabel, matchFormat, graph, admin, preferred = [], dayEdited = false) {
         const slots = graph.matchSlots[match.id] || [null, null];
         const winUid = graph.matchWinners[match.id] || null;
+        const isDefWin = Boolean(graph.defaultWins?.[match.id]);
         const fmt = String(matchFormat || match.format || "BO3").toUpperCase();
         const fmtCls = fmt === "BO5" ? "bo5" : "bo3";
 
@@ -863,60 +1679,74 @@ export function createTournamentsModule(deps) {
                     <div class="match-card-title">
                         <strong>${esc(match.label)}</strong>
                         <span class="match-format-pill ${fmtCls}">${esc(fmt)}</span>
+                        ${isDefWin ? `<span class="oq-defwin-badge">W/O Def-Win</span>` : ""}
                     </div>
                     <div class="match-schedule-info">${scheduleMarkup}</div>
                 </div>
-                ${buildMatchSlotMarkup(tId, match, 0, slots[0], winUid, graph.participants, admin, preferred)}
-                ${buildMatchSlotMarkup(tId, match, 1, slots[1], winUid, graph.participants, admin, preferred)}
+                ${buildMatchSlotMarkup(tId, match, 0, slots[0], winUid, graph, admin, preferred)}
+                ${buildMatchSlotMarkup(tId, match, 1, slots[1], winUid, graph, admin, preferred)}
             </div>
         `;
     }
+
+    // ==================== RO32 + RO16 GETRENNT (OHNE VERKETTETEN BAUM) ====================
     function renderQuali32Bracket(t, graph, admin) {
         const r32 = t.rounds.find(r => r.id === "r32");
         const r16 = t.rounds.find(r => r.id === "r16");
         if (!r32 || !r16) return "";
-        const r32Map = {};
-        r32.days.forEach(d => d.matches.forEach(m => { r32Map[m.id] = { m, d }; }));
-        const r16List = r16.days.flatMap(d => d.matches.map(m => ({ m, d })));
 
-        const pairs = r16List.map((item, idx) => {
-            const [lId, rId] = item.m.fromMatches || [];
-            const l = r32Map[lId], r = r32Map[rId];
-            if (!l || !r) return "";
-            const feed = [...(graph.matchSlots[lId] || []), ...(graph.matchSlots[rId] || [])].filter(Boolean);
+        const r32DaysHtml = r32.days.map((d, dIdx) => `
+            <div class="round-day-card">
+                <div class="round-day-header">
+                    <strong>${esc(d.dateLabel)}</strong>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        <span>${d.matches.length} Matches</span>
+                        ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="edit-date-label" data-path-type="round-day" data-tournament-id="${esc(t.id)}" data-target-id="${esc(r32.id)}" data-sub-index="${dIdx}" data-current-val="${esc(d.dateLabel)}" title="Datum bearbeiten">✏️</button>` : ""}
+                    </div>
+                </div>
+                ${d.matches.map(m => renderMatchCard(t.id, m, d.dateLabel, m.format || r32.defaultFormat, graph, admin, [], d.dateEdited)).join("")}
+            </div>
+        `).join("");
+
+        const r16Flat = r16.days.flatMap(d => d.matches.map(m => ({ m, d })));
+        const hasNext = Boolean(t.nextTournamentId && getTournamentById(t.nextTournamentId));
+
+        const r16RowsHtml = r16Flat.map((item, idx) => {
             const winUid = graph.matchWinners[item.m.id];
             const winInfo = winUid ? getResolvedParticipant(winUid, graph.participants) : null;
-            const hasNext = Boolean(t.nextTournamentId && getTournamentById(t.nextTournamentId));
             const pillTxt = winInfo
-                ? `✅ ${winInfo.icon} ${esc(winInfo.displayName)}<br><span style="font-weight:400;">Qualifiziert (Top 8)</span>`
-                : `🏆 Top 8 Platz #${idx + 1}<br><span style="font-weight:400; color:#fde68a;">→ LAN Finals</span>`;
+                ? `✅ ${formatParticipantLabel(winInfo)}<br><span style="font-weight:400;">Qualifiziert (Top 8)</span>`
+                : `Top 8 Platz #${idx + 1}<br><span style="font-weight:400; color:#fde68a;">→ Weiter</span>`;
             const pill = hasNext
                 ? `<button type="button" class="lan-qual-pill ${winInfo ? "qualified" : ""}" data-action="open-tournament" data-tournament-id="${esc(t.nextTournamentId)}">${pillTxt}</button>`
                 : `<div class="lan-qual-pill ${winInfo ? "qualified" : ""}" style="cursor:default;">${pillTxt}</div>`;
 
             return `
-                <div class="bracket-pair">
-                    <div class="bracket-pair-r32">
-                        ${renderMatchCard(t.id, l.m, l.d.dateLabel, l.m.format || r32.defaultFormat, graph, admin, [], l.d.dateEdited)}
-                        ${renderMatchCard(t.id, r.m, r.d.dateLabel, r.m.format || r32.defaultFormat, graph, admin, [], r.d.dateEdited)}
-                    </div>
-                    <div class="bracket-connector"></div>
-                    <div class="bracket-pair-r16">${renderMatchCard(t.id, item.m, item.d.dateLabel, item.m.format || r16.defaultFormat, graph, admin, feed, item.d.dateEdited)}</div>
-                    <div class="bracket-lan-cell">${pill}</div>
+                <div class="quali32-r16-row">
+                    <div>${renderMatchCard(t.id, item.m, item.d.dateLabel, item.m.format || r16.defaultFormat, graph, admin, graph.r32Winners || [], item.d.dateEdited)}</div>
+                    <div class="quali32-r16-qual">${pill}</div>
                 </div>
             `;
         }).join("");
 
         return `
-            ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: Teams wählen und per 🏆 Sieger weiterleiten.</span><div class="news-form-actions" style="margin-top:0;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Standard-Zeiten verteilen</button><button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 R32 setzen</button><button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Leeren</button></div></div>` : ""}
-            <div class="bracket-scroll"><div class="bracket-board">
-                <div class="bracket-col-headers">
-                    <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="r32">⚔️ Round of 32 (16 · ${esc(r32.defaultFormat || "BO3")})<small>${esc(t.onlineDates)}</small></div>
-                    <div></div>
-                    <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="r16">🔥 Round of 16 (8 · ${esc(r16.defaultFormat || "BO3")})<small>4 Matches pro Tag</small></div>
-                    <div class="bracket-col-head ${t.nextTournamentId ? "clickable" : ""}" ${t.nextTournamentId ? `data-action="open-tournament" data-tournament-id="${esc(t.nextTournamentId)}"` : ""}>✈️ Top 8 Quali<small>${esc(t.lanDates || "LAN Finals")}</small></div>
-                </div>${pairs}
-            </div></div>
+            ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: In RO16 stehen ausschließlich die Gewinner der Round of 32 zur Auswahl.</span><div class="news-form-actions" style="margin-top:0;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten verteilen</button><button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 RO32 setzen</button><button type="button" class="btn btn-secondary btn-small" data-action="autofill-r16-from-r32" data-tournament-id="${esc(t.id)}" ${(graph.r32Winners || []).length === 0 ? "disabled" : ""}>⚡ RO32-Sieger in RO16 paaren</button><button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Leeren</button></div></div>` : ""}
+
+            <div class="quali32-section">
+                <div class="quali32-section-head">
+                    <h3>⚔️ Round of 32 (16 Matches · ${esc(r32.defaultFormat || "BO3")})</h3>
+                    <span class="muted">${(graph.r32Winners || []).length} / 16 Sieger ermittelt</span>
+                </div>
+                <div class="round-days-grid">${r32DaysHtml}</div>
+            </div>
+
+            <div class="quali32-section">
+                <div class="quali32-section-head">
+                    <h3>🔥 Round of 16 (8 Matches → Top 8 Quali · ${esc(r16.defaultFormat || "BO3")})</h3>
+                    <span class="muted">Eigenständige Paarungen aus den RO32-Siegern</span>
+                </div>
+                <div class="quali32-r16-list">${r16RowsHtml}</div>
+            </div>
         `;
     }
 
@@ -933,8 +1763,8 @@ export function createTournamentsModule(deps) {
             const winUid = graph.matchWinners[matchId];
             const winInfo = winUid ? getResolvedParticipant(winUid, graph.participants) : null;
             const txt = winInfo
-                ? `✅ ${winInfo.icon} ${esc(winInfo.displayName)}<br><span style="font-weight:400;">Qualifiziert (#${slotNum})</span>`
-                : `🏆 Qualifikant #${slotNum}<br><span style="font-weight:400; color:#fde68a;">${hasNext ? "→ Zum Folgeturnier" : "Weiter"}</span>`;
+                ? `✅ ${formatParticipantLabel(winInfo)}<br><span style="font-weight:400;">Qualifiziert (#${slotNum})</span>`
+                : `Qualifikant #${slotNum}<br><span style="font-weight:400; color:#fde68a;">${hasNext ? "→ Zum Folgeturnier" : "Weiter"}</span>`;
             return hasNext
                 ? `<button type="button" class="lan-qual-pill ${winInfo ? "qualified" : ""}" data-action="open-tournament" data-tournament-id="${esc(t.nextTournamentId)}">${txt}</button>`
                 : `<div class="lan-qual-pill ${winInfo ? "qualified" : ""}" style="cursor:default;">${txt}</div>`;
@@ -970,21 +1800,21 @@ export function createTournamentsModule(deps) {
         }).join("");
 
         return `
-            ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: 16 Teams in UB Runde 1 setzen & Sieger per 🏆 festlegen (4 Upper + 4 Lower = 8 weiter).</span><div class="news-form-actions" style="margin-top:0;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten verteilen</button><button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teams in UB R1 setzen</button><button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Zurücksetzen</button></div></div>` : ""}
-            <h3 style="margin:10px 0 8px;">⚔️ Upper Bracket (8 + 4 Matches → 4 Qualifikanten)</h3>
+            ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: 16 Teams in UB Runde 1 setzen &amp; Sieger per 🏆 festlegen.</span><div class="news-form-actions" style="margin-top:0;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten verteilen</button><button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teams in UB R1 setzen</button><button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Zurücksetzen</button></div></div>` : ""}
+            <h3 style="margin:10px 0 8px;">⚔️ Upper Bracket</h3>
             <div class="bracket-scroll"><div class="bracket-board">
                 <div class="bracket-col-headers">
                     <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="ub-r1">UB Runde 1 (8)</div><div></div>
                     <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="ub-r2">UB Quali-Runde (4)</div>
-                    <div class="bracket-col-head">🏆 Upper Qualifikanten (4)</div>
+                    <div class="bracket-col-head">Upper Qualifikanten (4)</div>
                 </div>${ubPairs}
             </div></div>
-            <h3 style="margin:18px 0 8px;">🔥 Lower Bracket (4 + 4 Matches → 4 Qualifikanten)</h3>
+            <h3 style="margin:18px 0 8px;">🔥 Lower Bracket</h3>
             <div class="bracket-scroll"><div class="bracket-board">
                 <div class="bracket-col-headers">
                     <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="lb-r1">LB Runde 1 (4)</div><div></div>
                     <div class="bracket-col-head clickable" data-action="switch-subtab" data-subtab="lb-r2">LB Quali-Runde (4)</div>
-                    <div class="bracket-col-head">🏆 Lower Qualifikanten (4)</div>
+                    <div class="bracket-col-head">Lower Qualifikanten (4)</div>
                 </div>${lbPairs}
             </div></div>
         `;
@@ -1030,8 +1860,162 @@ export function createTournamentsModule(deps) {
             ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: Sieger per 🏆 festlegen.</span><div class="news-form-actions" style="margin-top:0;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Standard-Zeiten verteilen</button>${advAction}<button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Zurücksetzen</button></div></div>` : ""}
             <div class="bracket-scroll"><div class="classic-bracket ${rounds.length >= 4 ? "is-16" : ""}">
                 <div class="classic-col-headers ${rounds.length >= 4 ? "is-16" : ""}">${headers}<div class="bracket-col-head">🥇 Sieger<small>${esc(t.prizePoolTotal ? `${t.prizePoolTotal.toLocaleString("de-DE")} $ Pool` : t.onlineDates)}</small></div></div>
-                <div class="classic-bracket-body ${rounds.length >= 4 ? "is-16" : ""}">${cols}<div class="classic-col-champ"><div class="champion-box"><small>🏆 ${champ ? "Champion · 1. Platz" : "Turniersieger"}</small><strong>${champ ? `${champ.icon} ${esc(champ.displayName)}` : "TBD"}</strong><span>${esc(prizeLbl)}</span></div></div></div>
+                <div class="classic-bracket-body ${rounds.length >= 4 ? "is-16" : ""}">${cols}<div class="classic-col-champ"><div class="champion-box"><small>🏆 ${champ ? "Champion · 1. Platz" : "Turniersieger"}</small><strong>${champ ? formatParticipantLabel(champ) : "TBD"}</strong><span>${esc(prizeLbl)}</span></div></div></div>
             </div></div>
+        `;
+    }
+
+    // ==================== OPEN QUALIFIER (8 - 512 TEILNEHMER + BYE / DEF-WIN) ====================
+    function renderOpenQualifierMatchCard(t, match, dayDateLabel, graph, admin) {
+        const slots = graph.matchSlots[match.id] || [null, null];
+        const winUid = graph.matchWinners[match.id] || null;
+        const isDefWin = Boolean(graph.defaultWins?.[match.id]);
+
+        const sched = graph.matchSchedules?.[match.id] || {};
+        const matchDateISO = sched.date || match.defaultDateISO || "";
+        const matchTime = sched.time || match.time || "";
+        const tzKey = getTimezone?.() || "europe";
+        const conv = convertFromBaseTimezone(matchDateISO, matchTime, tzKey);
+        const timeBadge = conv.timeStr ? `${conv.timeStr}` : dayDateLabel;
+
+        const renderSlot = (slotIdx) => {
+            const uid = slots[slotIdx];
+            const info = getResolvedParticipant(uid, graph.participants);
+            const isWin = Boolean(winUid && uid && winUid === uid);
+            const isLoss = Boolean(winUid && uid && uid !== "__BYE__" && winUid !== uid);
+            const cls = isWin ? "is-winner" : (isLoss ? "is-loser" : (info?.isBye ? "is-bye" : (info ? "is-assigned" : "")));
+            const labelText = info ? (info.isBye ? "— Freilos (BYE) —" : formatParticipantLabel(info)) : "TBD / Frei";
+
+            if (!admin) {
+                return `<div class="oq-slot-row"><div class="oq-slot-btn ${cls}" style="cursor:default;">${labelText}</div></div>`;
+            }
+
+            const canWin = Boolean(uid && uid !== "__BYE__");
+            return `
+                <div class="oq-slot-row">
+                    <button type="button" class="oq-slot-btn ${cls}" data-action="open-oq-slot-picker" data-tournament-id="${esc(t.id)}" data-match-id="${esc(match.id)}" data-slot="${slotIdx}" title="Team oder Freilos (BYE) wählen">${labelText}</button>
+                    <button type="button" class="oq-defwin-btn ${isWin && isDefWin ? "active" : ""}" data-action="toggle-defwin" data-tournament-id="${esc(t.id)}" data-match-id="${esc(match.id)}" data-uid="${esc(uid || "")}" ${!canWin ? "disabled" : ""} title="Default Win (W/O) ohne Gegner / Aufgabe">W/O</button>
+                    <button type="button" class="btn-winner-toggle ${isWin && !isDefWin ? "active" : ""}" style="width:24px; height:24px; font-size:.75rem;" data-action="toggle-winner" data-tournament-id="${esc(t.id)}" data-match-id="${esc(match.id)}" data-uid="${esc(uid || "")}" ${!canWin ? "disabled" : ""} title="Regulärer Sieg">🏆</button>
+                </div>
+            `;
+        };
+
+        return `
+            <div class="oq-match-card">
+                <div class="oq-match-head">
+                    <span><strong>${esc(match.label)}</strong> · ${esc(match.format || "BO1")}</span>
+                    <span>${isDefWin ? `<span class="oq-defwin-badge">Def-Win</span>` : esc(timeBadge)}</span>
+                </div>
+                ${renderSlot(0)}
+                ${renderSlot(1)}
+            </div>
+        `;
+    }
+
+    function renderOpenQualifierBracket(t, graph, admin) {
+        const rounds = t.rounds || [];
+        if (rounds.length === 0) return "";
+        const size = Number(t.playoffSize) || 64;
+        const r0Matches = rounds[0]?.days?.flatMap(d => d.matches) || [];
+        const sliceMatchCount = 32; // 32 R1-Matches = 64er Ast
+        const numSlices = r0Matches.length > sliceMatchCount ? Math.ceil(r0Matches.length / sliceMatchCount) : 1;
+
+        let sectionTabsHtml = "";
+        if (numSlices > 1) {
+            const btns = [`<button type="button" class="oq-section-btn ${activeOqSection === "all" ? "active" : ""}" data-action="oq-section" data-section="all">🌳 Gesamter Baum (${size})</button>`];
+            for (let s = 0; s < numSlices; s++) {
+                btns.push(`<button type="button" class="oq-section-btn ${activeOqSection === `slice-${s}` ? "active" : ""}" data-action="oq-section" data-section="slice-${s}">Ast ${s + 1} (#${s * 64 + 1}–#${(s + 1) * 64})</button>`);
+            }
+            if (rounds.length > 3) {
+                btns.push(`<button type="button" class="oq-section-btn ${activeOqSection === "finals" ? "active" : ""}" data-action="oq-section" data-section="finals">Final-Runden</button>`);
+            }
+            sectionTabsHtml = `<div class="oq-section-tabs">${btns.join("")}</div>`;
+        } else {
+            activeOqSection = "all";
+        }
+
+        // Welche Runden & Match-Indizes werden im gewählten Ausschnitt angezeigt?
+        let visibleRounds = rounds.map((r, rIdx) => ({
+            r,
+            rIdx,
+            items: r.days.flatMap(d => d.matches.map(m => ({ m, d })))
+        }));
+
+        if (activeOqSection === "finals" && rounds.length > 3) {
+            const startIdx = Math.max(0, rounds.length - 4);
+            visibleRounds = visibleRounds.slice(startIdx);
+        } else if (activeOqSection.startsWith("slice-")) {
+            const sIdx = Number(activeOqSection.split("-")[1]) || 0;
+            visibleRounds = visibleRounds.map((vr, idx) => {
+                const factor = Math.pow(2, idx);
+                const countInSlice = sliceMatchCount / factor;
+                if (countInSlice < 1) return null;
+                const start = sIdx * countInSlice;
+                return { ...vr, items: vr.items.slice(start, start + countInSlice) };
+            }).filter(Boolean);
+        }
+
+        const firstRoundCount = visibleRounds[0]?.items?.length || 1;
+        const bodyHeight = Math.max(380, firstRoundCount * (admin ? 92 : 76));
+
+        const headersHtml = visibleRounds.map((vr, idx) => `
+            <div class="oq-head-cell">${esc(vr.r.name)} (${vr.items.length})<small>${esc(vr.r.defaultFormat || "BO1")}</small></div>
+            ${idx < visibleRounds.length - 1 ? `<div class="oq-head-spacer"></div>` : ""}
+        `).join("");
+
+        const showQualCol = activeOqSection === "all" || activeOqSection === "finals";
+        const lastVisibleRound = visibleRounds[visibleRounds.length - 1];
+        const hasNext = Boolean(t.nextTournamentId && getTournamentById(t.nextTournamentId));
+
+        const colsHtml = visibleRounds.map((vr, idx) => {
+            const isLast = idx === visibleRounds.length - 1;
+            const cards = vr.items.map(it => renderOpenQualifierMatchCard(t, it.m, it.d.dateLabel, graph, admin)).join("");
+            const connCount = Math.max(1, Math.floor(vr.items.length / 2));
+            const connHtml = isLast ? "" : `<div class="oq-col-conn">${Array.from({ length: connCount }, () => '<div class="bracket-connector"></div>').join("")}</div>`;
+            return `<div class="oq-col-round">${cards}</div>${connHtml}`;
+        }).join("");
+
+        let qualColHtml = "";
+        if (showQualCol && lastVisibleRound) {
+            const qPills = lastVisibleRound.items.map((it, idx) => {
+                const winUid = graph.matchWinners[it.m.id];
+                const winInfo = winUid ? getResolvedParticipant(winUid, graph.participants) : null;
+                const txt = winInfo
+                    ? `✅ ${formatParticipantLabel(winInfo)}`
+                    : `Qualifikant #${idx + 1}`;
+                const inner = hasNext
+                    ? `<button type="button" class="lan-qual-pill ${winInfo ? "qualified" : ""}" data-action="open-tournament" data-tournament-id="${esc(t.nextTournamentId)}">${txt}</button>`
+                    : `<div class="lan-qual-pill ${winInfo ? "qualified" : ""}" style="cursor:default;">${txt}</div>`;
+                return `<div class="oq-qual-slot">${inner}</div>`;
+            }).join("");
+            qualColHtml = `<div class="oq-qual-col">${qPills}</div>`;
+        }
+
+        return `
+            ${admin ? `
+                <div class="bracket-toolbar">
+                    <span class="muted">Admin: Klicke auf einen Slot für Team/Freilos (BYE) oder nutze <strong>W/O</strong> für Default Win.</span>
+                    <div class="news-form-actions" style="margin-top:0;">
+                        <button type="button" class="btn btn-secondary btn-small" data-action="oq-seed-r1" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teams &amp; Freilose (BYEs) in R1 setzen</button>
+                        <button type="button" class="btn btn-accent btn-small" data-action="oq-autoresolve-byes" data-tournament-id="${esc(t.id)}">⚡ Freilose als Def-Win werten</button>
+                        <button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten</button>
+                        <button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Leeren</button>
+                    </div>
+                </div>
+            ` : ""}
+            ${sectionTabsHtml}
+            <div class="oq-bracket-scroll">
+                <div class="oq-bracket-wrap">
+                    <div class="oq-headers-row">
+                        ${headersHtml}
+                        ${showQualCol ? `<div class="oq-head-cell oq-head-qual">🏆 Qualifiziert (${lastVisibleRound?.items?.length || 0})</div>` : ""}
+                    </div>
+                    <div class="oq-bracket-body" style="min-height:${bodyHeight}px;">
+                        ${colsHtml}
+                        ${qualColHtml}
+                    </div>
+                </div>
+            </div>
         `;
     }
 
@@ -1040,7 +2024,7 @@ export function createTournamentsModule(deps) {
             const slots = Array.from({ length: expectedCount }, (_, i) => {
                 const row = teams[i];
                 const info = row ? getResolvedParticipant(row.uid, graph.participants) : null;
-                return info ? `<div class="swiss-outcome-team">${info.icon} ${esc(info.displayName)}</div>` : `<div class="swiss-outcome-team empty">TBD</div>`;
+                return info ? `<div class="swiss-outcome-team">${formatParticipantLabel(info)}</div>` : `<div class="swiss-outcome-team empty">TBD</div>`;
             }).join("");
             return `<div class="swiss-outcome-box ${cls}"><div class="swiss-outcome-title">${esc(title)}</div>${slots}</div>`;
         };
@@ -1086,18 +2070,18 @@ export function createTournamentsModule(deps) {
                 const info = getResolvedParticipant(row.uid, graph.participants);
                 const statusTxt = row.wins >= g.winsToAdvance ? "✅ Weiter" : (row.losses >= g.lossesToEliminate ? "❌ Raus" : "⚔️ Aktiv");
                 const cls = row.wins >= g.winsToAdvance ? "row-qualified" : (row.losses >= g.lossesToEliminate ? "row-eliminated" : "");
-                return `<tr class="${cls}"><td>${idx + 1}</td><td>${info ? `${info.icon} ${esc(info.displayName)}` : "–"}</td><td><strong>${row.wins} - ${row.losses}</strong></td><td>${statusTxt}</td></tr>`;
+                return `<tr class="${cls}"><td>${idx + 1}</td><td>${info ? formatParticipantLabel(info) : "–"}</td><td><strong>${row.wins} - ${row.losses}</strong></td><td>${statusTxt}</td></tr>`;
             }).join("");
 
             return `
                 <div class="stage-group-block">
                     <div class="bracket-toolbar">
-                        <h3>🇨🇭 ${esc(g.name)} (${g.teamCount} Teams · ${g.winsToAdvance} Siege = Weiter, ${g.lossesToEliminate} Niederlagen = Raus)</h3>
+                        <h3>📊 ${esc(g.name)} (${g.teamCount} Teams · ${g.winsToAdvance} Siege = Weiter, ${g.lossesToEliminate} Niederlagen = Raus)</h3>
                         ${admin ? `<button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten verteilen</button>` : ""}
                     </div>
                     <div class="swiss-tree-scroll"><div class="swiss-tree-grid">${colsHtml}</div></div>
                     <details class="swiss-table-details">
-                        <summary>📊 Detaillierte Swiss-Tabelle anzeigen (${standings.length} Teams)</summary>
+                        <summary>📊 Detaillierte Tabelle anzeigen (${standings.length} Teams)</summary>
                         <div class="ranking-table-wrap" style="margin-top:10px;">
                             <table class="ranking-table stage-table">
                                 <thead><tr><th>#</th><th>Team</th><th>Bilanz (S-N)</th><th>Status</th></tr></thead>
@@ -1144,7 +2128,7 @@ export function createTournamentsModule(deps) {
                             <div class="gsl-cell-gf">
                                 ${renderMatchCard(t.id, gf, gf.dateLabel || "", gf.format, graph, admin, pref([ub.id, cf.id]), gf.dateEdited)}
                                 <div class="lan-qual-pill ${gfInfo ? "qualified" : ""}" style="cursor:default;">
-                                    ${gfInfo ? `✅ ${gfInfo.icon} ${esc(gfInfo.displayName)}<br><span style="font-weight:400;">Gruppensieger (Weiter)</span>` : `🏆 1 Gruppensieger weiter`}
+                                    ${gfInfo ? `✅ ${formatParticipantLabel(gfInfo)}<br><span style="font-weight:400;">Gruppensieger (Weiter)</span>` : `1 Gruppensieger weiter`}
                                 </div>
                             </div>
                             <div class="gsl-cell-lb1">
@@ -1168,7 +2152,7 @@ export function createTournamentsModule(deps) {
                         <div class="gsl-headers-5">
                             <div class="gsl-col-head"><span>Opening round <small>${esc(o1.dateLabel || "")}</small></span>${dateBtn(o1.round, o1.dateLabel)}</div><div></div>
                             <div class="gsl-col-head"><span>Winners / Decider</span>${dateBtn(w1.round, w1.dateLabel)}</div>
-                            <div class="gsl-col-head"><span>🏆 Qualifiziert (Top 2)</span></div>
+                            <div class="gsl-col-head"><span>Qualifiziert (Top 2)</span></div>
                         </div>
                         <div class="gsl-grid-5">
                             <div class="gsl-cell-open">
@@ -1177,7 +2161,7 @@ export function createTournamentsModule(deps) {
                             </div>
                             <div class="gsl-conn-r1"><div class="bracket-connector"></div></div>
                             <div class="gsl-cell-ub">${renderMatchCard(t.id, w1, w1.dateLabel || "", w1.format, graph, admin, pref([o1.id, o2.id]), w1.dateEdited)}</div>
-                            <div class="gsl-qual-row-1"><div class="lan-qual-pill ${q1 ? "qualified" : ""}" style="cursor:default;">${q1 ? `✅ ${q1.icon} ${esc(q1.displayName)}` : "🏆 Qualifikant #1"}</div></div>
+                            <div class="gsl-qual-row-1"><div class="lan-qual-pill ${q1 ? "qualified" : ""}" style="cursor:default;">${q1 ? `✅ ${formatParticipantLabel(q1)}` : "Qualifikant #1"}</div></div>
                             <div class="gsl-cell-lb1">
                                 <div class="gsl-lb-subhead"><span><span class="gsl-drop-arrow">↓</span> Elimination · ${esc(l1.dateLabel || "")}</span>${dateBtn(l1.round, l1.dateLabel)}</div>
                                 ${renderMatchCard(t.id, l1, l1.dateLabel || "", l1.format, graph, admin, pref([o1.id, o2.id]), l1.dateEdited)}
@@ -1187,18 +2171,18 @@ export function createTournamentsModule(deps) {
                                 <div class="gsl-lb-subhead"><span><span class="gsl-drop-arrow">↓</span> Decider · ${esc(d1.dateLabel || "")}</span>${dateBtn(d1.round, d1.dateLabel)}</div>
                                 ${renderMatchCard(t.id, d1, d1.dateLabel || "", d1.format, graph, admin, pref([w1.id, l1.id]), d1.dateEdited)}
                             </div>
-                            <div class="gsl-qual-row-2"><div class="lan-qual-pill ${q2 ? "qualified" : ""}" style="cursor:default;">${q2 ? `✅ ${q2.icon} ${esc(q2.displayName)}` : "🏆 Qualifikant #2"}</div></div>
+                            <div class="gsl-qual-row-2"><div class="lan-qual-pill ${q2 ? "qualified" : ""}" style="cursor:default;">${q2 ? `✅ ${formatParticipantLabel(q2)}` : "Qualifikant #2"}</div></div>
                         </div>
                     </div></div>
                 `;
             } else {
-                bodyHtml = `<div class="placeholder-box"><span>Für diese Gruppengröße sind keine GSL-Matches definiert.</span></div>`;
+                bodyHtml = `<div class="placeholder-box"><span>Für diese Gruppengröße sind keine Matches definiert.</span></div>`;
             }
 
             return `
                 <div class="stage-group-block">
                     <div class="bracket-toolbar">
-                        <h3>⚔️ ${esc(g.name)} (GSL / Double-Elim · ${g.size} Teams · Top ${g.advanceCount || 2} weiter)</h3>
+                        <h3>⚔️ ${esc(g.name)} (${g.size} Teams · Top ${g.advanceCount || 2} weiter)</h3>
                         ${admin ? `<div style="display:flex; gap:6px;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten</button><button type="button" class="btn btn-secondary btn-small" data-action="autofill-de-group" data-tournament-id="${esc(t.id)}" data-group-index="${gIdx}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teams setzen</button></div>` : ""}
                     </div>
                     ${bodyHtml}
@@ -1206,12 +2190,13 @@ export function createTournamentsModule(deps) {
             `;
         }).join("");
     }
+
     function renderRoundRobinTab(t, graph, admin) {
         return (t.rrGroups || []).map(g => {
             const standingRows = (graph.rrStandings[g.id] || []).map((row, idx) => {
                 const info = getResolvedParticipant(row.uid, graph.participants);
                 const adv = idx < (g.advanceCount || 2);
-                return `<tr class="${adv ? "row-qualified" : ""}"><td>${idx + 1}</td><td>${info ? `${info.icon} ${esc(info.displayName)}` : "–"}</td><td>${row.played}</td><td>${row.wins}</td><td>${row.losses}</td><td><strong>${row.points}</strong></td><td>${adv ? "✅ Weiter" : "–"}</td></tr>`;
+                return `<tr class="${adv ? "row-qualified" : ""}"><td>${idx + 1}</td><td>${info ? formatParticipantLabel(info) : "–"}</td><td>${row.played}</td><td>${row.wins}</td><td>${row.losses}</td><td><strong>${row.points}</strong></td><td>${adv ? "✅ Weiter" : "–"}</td></tr>`;
             }).join("");
 
             const roundsHtml = g.rounds.map((r, rIdx) => `
@@ -1278,6 +2263,15 @@ export function createTournamentsModule(deps) {
 
     function renderRoundTab(t, round, graph, admin, rIdx) {
         const fmt = round.defaultFormat || t.defaultFormat || "BO3";
+        if (t.playoffType === "open_qualifier" || t.isOpenQualifier) {
+            const cardsHtml = round.days.map(d => d.matches.map(m => renderOpenQualifierMatchCard(t, m, d.dateLabel, graph, admin)).join("")).join("");
+            return `
+                <div class="bracket-toolbar">
+                    <div><h3>${esc(round.name)}</h3><p class="muted">${esc(round.subtitle || "")}</p></div>
+                </div>
+                <div class="participants-grid" style="grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));">${cardsHtml}</div>
+            `;
+        }
         const daysHtml = round.days.map((d, dIdx) => `
             <div class="round-day-card">
                 <div class="round-day-header">
@@ -1292,7 +2286,6 @@ export function createTournamentsModule(deps) {
         `).join("");
         return `<div class="bracket-toolbar"><div><h3>${esc(round.name)}</h3><p class="muted">${esc(round.subtitle || "")}</p></div>${admin && rIdx === 0 && !t.qualifiedFrom ? `<button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teilnehmer setzen</button>` : ""}</div><div class="round-days-grid">${daysHtml}</div>`;
     }
-
     function renderPrizePoolBox(t, graph) {
         if (!t.prizePoolTotal || !t.prizeDistribution?.length) return "";
         const rounds = t.rounds || [];
@@ -1301,7 +2294,7 @@ export function createTournamentsModule(deps) {
         const qfIds = rounds[rounds.length - 3]?.days?.flatMap(d => d.matches.map(m => m.id)) || ["qf-1", "qf-2", "qf-3", "qf-4"];
         const loser = (mId) => {
             const w = graph.matchWinners[mId], sl = graph.matchSlots[mId] || [null, null];
-            return (w && sl[0] && sl[1]) ? (w === sl[0] ? sl[1] : sl[0]) : null;
+            return (w && sl[0] && sl[1] && sl[0] !== "__BYE__" && sl[1] !== "__BYE__") ? (w === sl[0] ? sl[1] : sl[0]) : null;
         };
         const resolve = (type) => {
             if (type === "final-winner") return [graph.matchWinners[finalId]].filter(Boolean).map(u => getResolvedParticipant(u, graph.participants)).filter(Boolean);
@@ -1316,7 +2309,7 @@ export function createTournamentsModule(deps) {
                 <div class="prize-pool-header"><h3>💰 Preisgeldverteilung</h3><span class="prize-total">Gesamtpreispool: ${Number(t.prizePoolTotal).toLocaleString("de-DE")} $</span></div>
                 <div class="prize-grid">${t.prizeDistribution.map(tier => {
                     const teams = resolve(tier.sourceType);
-                    return `<div class="prize-tier"><div class="prize-tier-top"><strong>${esc(tier.place)}</strong><span class="prize-tier-amount">${Number(tier.amount).toLocaleString("de-DE")} $${esc(tier.labelSuffix || "")}</span></div><div class="prize-tier-teams">${teams.length ? teams.map(x => `${x.icon} ${esc(x.displayName)}`).join(" · ") : "Noch offen"}</div></div>`;
+                    return `<div class="prize-tier"><div class="prize-tier-top"><strong>${esc(tier.place)}</strong><span class="prize-tier-amount">${Number(tier.amount).toLocaleString("de-DE")} $${esc(tier.labelSuffix || "")}</span></div><div class="prize-tier-teams">${teams.length ? teams.map(x => formatParticipantLabel(x)).join(" · ") : "Noch offen"}</div></div>`;
                 }).join("")}</div>
             </div>
         `;
@@ -1330,11 +2323,15 @@ export function createTournamentsModule(deps) {
         return filtered.map(e => `<option value="${esc(e.uid)}" ${existing.has(e.uid) ? "disabled" : ""}>#${e.rank} ${esc(e.name)} (${e.points} Pkt${e.region ? ` · ${esc(e.region)}` : ""})${existing.has(e.uid) ? " ✓" : ""}</option>`).join("");
     }
 
-    function renderParticipantsTab(t, graph, admin) {
+    function renderParticipantsTab(t, graph, admin, invData = null) {
         const parts = graph.participants;
         const manual = Array.isArray(t.participants) ? t.participants : [];
         const existing = new Set(parts.map(p => p.uid));
         const full = parts.length >= t.maxTeams;
+        const hasStage2Direct = Boolean(t.hasStage1 && t.hasPlayoffs && Number(t.directInvites) > 0);
+        const data = invData || computeAllCircuitsInviteData();
+        const circuit = data.tournamentToCircuit.get(t.id) || null;
+        const tTiers = data.tierResultsByTournament.get(t.id) || {};
 
         let adminBox = "";
         if (admin) {
@@ -1350,30 +2347,103 @@ export function createTournamentsModule(deps) {
             const dOpts = dates.map(d => `<option value="${esc(d)}" ${d === selectedVrsDate ? "selected" : ""}>${esc(d)}</option>`).join("");
             const vOpts = selectedVrsDate ? buildVrsSelectOptions(selectedVrsDate, vrsSearchTerm, existing) : `<option value="">Keine VRS-Daten</option>`;
 
+            const tierSelectHtml = hasStage2Direct
+                ? `<div class="vrs-autofill-bar" style="border-color:rgba(59,130,246,.45);"><label for="tournament-tier-target" style="font-size:.82rem; font-weight:700;">Ziel-Bereich für neue Teams:</label><select id="tournament-tier-target"><option value="stage1" ${selectedTierTarget === "stage1" ? "selected" : ""}>Gruppenphase (${(t.groupCount || 1) * (t.groupSize || 16)} Plätze)</option><option value="playoffs_direct" ${selectedTierTarget === "playoffs_direct" ? "selected" : ""}>Playoffs Direkt-Invite (${t.directInvites} Plätze)</option></select></div>`
+                : "";
+
+            let inviteMonitorHtml = "";
+            if (circuit && t.useAutoInvites !== false) {
+                const phaseText = circuit.phase === "before"
+                    ? `Startet am ${formatDateDE(circuit.regStart)}`
+                    : (circuit.phase === "open"
+                        ? `Aktiv bis ${formatDateDE(addDaysISO(circuit.regEnd, -1))}`
+                        : `Abgeschlossen am ${formatDateDE(addDaysISO(circuit.regEnd, -1))}`);
+                const tierCards = Object.values(tTiers).map(tr => {
+                    const invChips = tr.invitedPlayers.map(ip => {
+                        const st = ip.response?.status === "accepted" ? "✅ Bestätigt" : "⏳ Eingeladen (wartet)";
+                        return `<div class="invite-status-chip"><strong>🛡️ ${esc(ip.name)} (${ip.points} Pkt.)</strong><span>${st} · ${esc(tr.shortLabel)}</span></div>`;
+                    }).join("");
+                    const dispNames = tr.displacedBase.map(d => `${d.name} (${d.livePoints} Pkt.)`).join(", ");
+                    return `
+                        <div style="display:flex; flex-direction:column; gap:6px;">
+                            <small style="color:var(--text-muted);"><strong>${esc(tr.shortLabel)}:</strong> ${tr.invitedPlayers.length} Spielerteam(s) qualifiziert${dispNames ? ` · Verdrängt: ${esc(dispNames)}` : ""}</small>
+                            ${invChips ? `<div class="invite-status-grid">${invChips}</div>` : `<small class="muted">Keine Spielerteams für diesen Bereich eingeladen.</small>`}
+                        </div>
+                    `;
+                }).join("");
+
+                inviteMonitorHtml = `
+                    <div class="invite-status-panel">
+                        <div class="tournament-card-top">
+                            <strong>📧 E-Mail-Einladungsphase (${phaseText})</strong>
+                            ${circuit.phase === "closed" && !t.invitesBaked ? `<button type="button" class="btn btn-secondary btn-small" data-action="bake-invites" data-tournament-id="${esc(t.id)}">🔄 Bestätigte Teams fest speichern</button>` : ""}
+                        </div>
+                        ${tierCards}
+                    </div>
+                `;
+            }
+
             adminBox = `
                 <div class="tournament-admin-box">
                     <div class="tournament-card-top">
                         <h3>🛡️ Admin: Teams zuweisen (${parts.length} / ${t.maxTeams})</h3>
-                        <div class="news-form-actions" style="margin-top:0;">
-                            <button type="button" class="btn btn-secondary btn-small" data-action="fill-top-vrs" data-tournament-id="${esc(t.id)}" ${full || !selectedVrsDate ? "disabled" : ""}>⚡ Freie Plätze mit VRS-Top-Teams auffüllen</button>
-                            <button type="button" class="btn btn-danger btn-small" data-action="clear-participants" data-tournament-id="${esc(t.id)}" ${manual.length === 0 ? "disabled" : ""}>Manuelle entfernen</button>
-                        </div>
+                        <button type="button" class="btn btn-danger btn-small" data-action="clear-participants" data-tournament-id="${esc(t.id)}" ${manual.length === 0 ? "disabled" : ""}>Manuelle entfernen</button>
+                    </div>
+                    ${tierSelectHtml}
+                    <div class="vrs-autofill-bar">
+                        <strong style="font-size:.82rem;">⚡ VRS Auto-Zuweisung:</strong>
+                        <select id="tournament-vrs-fill-mode">
+                            <option value="rank" ${vrsFillMode === "rank" ? "selected" : ""}>Ab Platzierung (Start-Rang)</option>
+                            <option value="maxPts" ${vrsFillMode === "maxPts" ? "selected" : ""}>Max. Punktzahl (abwärts)</option>
+                            <option value="minPts" ${vrsFillMode === "minPts" ? "selected" : ""}>Mind. Punktzahl (aufwärts)</option>
+                        </select>
+                        <input type="number" id="tournament-vrs-offset-val" min="0" value="${esc(vrsFillValue)}" style="width:95px;" placeholder="Wert...">
+                        <button type="button" class="btn btn-secondary btn-small" data-action="fill-top-vrs" data-tournament-id="${esc(t.id)}" ${!selectedVrsDate ? "disabled" : ""}>Freie Plätze mit VRS auffüllen</button>
                     </div>
                     <div class="assign-grid">
-                        <div class="assign-card"><label>Spieler-Team auswählen (für Hinzufügen oder 🔄 Ersetzen)</label><div class="assign-row"><select id="tournament-player-select">${pOpts}</select><button type="button" class="btn btn-primary btn-small" data-action="add-player-team" data-tournament-id="${esc(t.id)}" ${full || !players.length ? "disabled" : ""}>Hinzufügen</button></div></div>
-                        <div class="assign-card"><label>VRS-Team zuweisen</label><div class="assign-row"><select id="tournament-vrs-date" style="max-width:135px;">${dOpts}</select><input type="text" id="tournament-vrs-search" placeholder="Team suchen..." value="${esc(vrsSearchTerm)}"></div><div class="assign-row"><select id="tournament-vrs-select">${vOpts}</select><button type="button" class="btn btn-accent btn-small" data-action="add-vrs-team" data-tournament-id="${esc(t.id)}" ${full || !selectedVrsDate ? "disabled" : ""}>Hinzufügen</button></div></div>
+                        <div class="assign-card">
+                            <label>Spieler-Team auswählen (für Hinzufügen oder 🔄 Ersetzen)</label>
+                            <div class="assign-row">
+                                <select id="tournament-player-select">${pOpts}</select>
+                                <button type="button" class="btn btn-primary btn-small" data-action="add-player-team" data-tournament-id="${esc(t.id)}" ${full || !players.length ? "disabled" : ""}>Hinzufügen</button>
+                            </div>
+                        </div>
+                        <div class="assign-card">
+                            <label>VRS-Team einzeln zuweisen</label>
+                            <div class="assign-row">
+                                <select id="tournament-vrs-date" style="max-width:135px;">${dOpts}</select>
+                                <input type="text" id="tournament-vrs-search" placeholder="Team suchen..." value="${esc(vrsSearchTerm)}">
+                            </div>
+                            <div class="assign-row">
+                                <select id="tournament-vrs-select">${vOpts}</select>
+                                <button type="button" class="btn btn-accent btn-small" data-action="add-vrs-team" data-tournament-id="${esc(t.id)}" ${full || !selectedVrsDate ? "disabled" : ""}>Hinzufügen</button>
+                            </div>
+                        </div>
+                        <div class="assign-card">
+                            <label>Manuelles Team hinzufügen (ohne VRS-Ranking)</label>
+                            <div class="assign-row">
+                                <input type="text" id="tournament-manual-team-name" placeholder="Teamname eingeben..." maxlength="40" autocomplete="off">
+                                <button type="button" class="btn btn-secondary btn-small" data-action="add-manual-team" data-tournament-id="${esc(t.id)}" ${full ? "disabled" : ""}>Hinzufügen</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
+                ${inviteMonitorHtml}
             `;
         }
 
         const cards = parts.length
             ? parts.map((p, i) => {
                 const info = getResolvedParticipant(p.uid, parts);
-                const actions = admin && !p.autoQualified
-                    ? `<div style="display:flex; gap:4px;"><button type="button" class="btn btn-secondary btn-small" data-action="replace-participant" data-tournament-id="${esc(t.id)}" data-uid="${esc(p.uid)}" title="Durch oben ausgewähltes Spieler-Team ersetzen (Matches & Ergebnisse bleiben erhalten)">🔄</button><button type="button" class="btn btn-danger btn-small" data-action="remove-participant" data-tournament-id="${esc(t.id)}" data-uid="${esc(p.uid)}">×</button></div>`
+                const tierTag = hasStage2Direct
+                    ? (p.slotGroup === "playoffs_direct" ? " · Playoffs Direkt" : " · Gruppenphase")
                     : "";
-                return `<div class="participant-item ${p.autoQualified ? "auto" : ""}"><div class="participant-info"><strong>#${i + 1} ${info.icon} ${esc(info.displayName)}</strong><small>${esc(info.badgeText)}${p.region ? ` · ${esc(p.region)}` : ""}</small></div>${actions}</div>`;
+                const inviteTag = p.invitedViaEmail ? " · E-Mail bestätigt" : "";
+                const canModify = admin && !p.autoQualified && !p.invitedViaEmail;
+                const actions = canModify
+                    ? `<div style="display:flex; gap:4px;"><button type="button" class="btn btn-secondary btn-small" data-action="replace-participant" data-tournament-id="${esc(t.id)}" data-uid="${esc(p.uid)}" title="Durch oben ausgewähltes Spieler-Team ersetzen">🔄</button><button type="button" class="btn btn-danger btn-small" data-action="remove-participant" data-tournament-id="${esc(t.id)}" data-uid="${esc(p.uid)}">×</button></div>`
+                    : "";
+                return `<div class="participant-item ${p.autoQualified || p.invitedViaEmail ? "auto" : ""}"><div class="participant-info"><strong>#${i + 1} ${formatParticipantLabel(info)}</strong><small>${esc(info.badgeText)}${p.region ? ` · ${esc(p.region)}` : ""}${esc(tierTag)}${esc(inviteTag)}</small></div>${actions}</div>`;
             }).join("")
             : "";
 
@@ -1384,35 +2454,78 @@ export function createTournamentsModule(deps) {
         const admin = isAdmin();
         const effStatus = getEffectiveStatus(t);
         const badge = formatCategoryBadge(effStatus);
-        const graph = resolveTournamentGraph(t);
+        const invData = computeAllCircuitsInviteData();
+        const visInfo = getTournamentVisibilityInfo(t, invData);
+        const graph = resolveTournamentGraph(t, new Set(), invData);
         const parts = graph.participants;
 
         const subTabs = [];
         if (t.hasStage1) {
-            const gLbl = t.stage1Type === "swiss" ? "🇨🇭 Swiss Stage" : (t.stage1Type === "gsl" ? "⚔️ GSL-Gruppen" : "📊 Gruppenphase");
-            subTabs.push({ id: "stage1", label: gLbl });
+            subTabs.push({ id: "stage1", label: "📊 Gruppenphase" });
         }
-        if (t.hasPlayIn) subTabs.push({ id: "playin", label: "⚡ Play-In Phase" });
+        if (t.hasPlayIn) subTabs.push({ id: "playin", label: "⚡ Play-In" });
         if (t.hasPlayoffs) {
-            subTabs.push({ id: "bracket", label: t.isDoubleElimQuali ? "🏆 Play-In Quali-Bracket" : "🌳 Playoffs-Turnierbaum" });
-            (t.rounds || []).forEach(r => subTabs.push({ id: r.id, label: `${r.name} (${r.defaultFormat || "BO3"})` }));
+            subTabs.push({ id: "bracket", label: "🌳 Turnierbaum" });
+            const isHugeOq = Boolean((t.playoffType === "open_qualifier" || t.isOpenQualifier) && (t.rounds || []).length > 4);
+            if (!isHugeOq) {
+                (t.rounds || []).forEach(r => subTabs.push({ id: r.id, label: `${r.name} (${r.defaultFormat || "BO3"})` }));
+            }
         }
-        subTabs.push({ id: "participants", label: `👥 Teilnehmer (${parts.length}/${t.maxTeams})` });
+        const partCountLabel = visInfo.canSeeLineupAndBracket ? `(${parts.length}/${t.maxTeams})` : `(max. ${t.maxTeams})`;
+        subTabs.push({ id: "participants", label: `👥 Teilnehmer ${partCountLabel}` });
 
         if (!activeSubTab || !subTabs.some(st => st.id === activeSubTab)) activeSubTab = subTabs[0]?.id || "participants";
 
         let body = "";
-        if (activeSubTab === "stage1") {
-            body = t.stage1Type === "swiss" ? renderSwissTab(t, graph, admin) : (t.stage1Type === "gsl" ? renderGslTab(t, graph, admin) : renderRoundRobinTab(t, graph, admin));
-        } else if (activeSubTab === "playin") {
-            body = renderPlayInTab(t, graph, admin);
-        } else if (activeSubTab === "bracket") {
-            body = t.isQuali32 ? renderQuali32Bracket(t, graph, admin) : (t.isDoubleElimQuali ? renderDoubleElimQualiBracket(t, graph, admin) : renderPlayoffsBracket(t, graph, admin));
-        } else if (activeSubTab === "participants") {
-            body = renderParticipantsTab(t, graph, admin);
+        if (!visInfo.canSeeLineupAndBracket) {
+            const c = visInfo.circuit;
+            const regEndDisplay = c ? formatDateDE(addDaysISO(c.regEnd, -1)) : "";
+            let regBlock = "";
+            if (t.useAutoInvites !== false && c) {
+                if (c.phase === "before") {
+                    regBlock = `<div class="tournament-notice info"><strong>⏳ Anmelde- &amp; Einladungsphase startet am ${esc(formatDateDE(c.regStart))}</strong><span>Die Einladungen der Turnierorganisatoren werden ab dem ${esc(formatDateDE(c.regStart))} per E-Mail unter <strong>Managing → E-Mails</strong> versendet.</span></div>`;
+                } else if (c.phase === "open") {
+                    regBlock = `<div class="tournament-notice info"><strong>📧 Einladungs- &amp; Anmeldephase aktiv (bis ${esc(regEndDisplay)})</strong><span>Die Anmeldung wird über E-Mail-Anfragen der Turnierorganisatoren unter <strong>Managing → E-Mails</strong> geregelt.</span></div>`;
+                }
+            }
+            const lowRankBlock = visInfo.myLowRankNotice
+                ? `<div class="tournament-notice danger"><strong>⚠️ Ranking zu niedrig</strong><span>${esc(visInfo.myLowRankNotice)}</span></div>`
+                : "";
+            const higherBlock = visInfo.myHigherTierNotice
+                ? `<div class="tournament-notice neutral"><strong>ℹ️ Hinweis</strong><span>${esc(visInfo.myHigherTierNotice)}</span></div>`
+                : "";
+            const invitedBlock = visInfo.myInvitedNotice
+                ? `<div class="tournament-notice warning"><strong>📧 Einladung im Postfach</strong><span>${esc(visInfo.myInvitedNotice)}</span></div>`
+                : "";
+
+            body = `
+                <div class="tournament-notices">
+                    <div class="tournament-notice warning">
+                        <strong>🔒 Teilnehmer &amp; Paarungen noch verborgen</strong>
+                        <span>Welche Teams am Turnier teilnehmen und wie die Paarungen aussehen, wird ab 1 Woche vor Turnierbeginn (${esc(formatDateDE(visInfo.revealDate))}) sichtbar.</span>
+                    </div>
+                    ${regBlock}
+                    ${invitedBlock}
+                    ${higherBlock}
+                    ${lowRankBlock}
+                </div>
+            `;
         } else {
-            const rIdx = (t.rounds || []).findIndex(r => r.id === activeSubTab);
-            body = rIdx >= 0 ? renderRoundTab(t, t.rounds[rIdx], graph, admin, rIdx) : "";
+            if (activeSubTab === "stage1") {
+                body = t.stage1Type === "swiss" ? renderSwissTab(t, graph, admin) : (t.stage1Type === "gsl" ? renderGslTab(t, graph, admin) : renderRoundRobinTab(t, graph, admin));
+            } else if (activeSubTab === "playin") {
+                body = renderPlayInTab(t, graph, admin);
+            } else if (activeSubTab === "bracket") {
+                if (t.playoffType === "open_qualifier" || t.isOpenQualifier) body = renderOpenQualifierBracket(t, graph, admin);
+                else if (t.isQuali32) body = renderQuali32Bracket(t, graph, admin);
+                else if (t.isDoubleElimQuali) body = renderDoubleElimQualiBracket(t, graph, admin);
+                else body = renderPlayoffsBracket(t, graph, admin);
+            } else if (activeSubTab === "participants") {
+                body = renderParticipantsTab(t, graph, admin, invData);
+            } else {
+                const rIdx = (t.rounds || []).findIndex(r => r.id === activeSubTab);
+                body = rIdx >= 0 ? renderRoundTab(t, t.rounds[rIdx], graph, admin, rIdx) : "";
+            }
         }
 
         const selMode = t.statusMode === "manual" ? t.status : "auto";
@@ -1448,20 +2561,21 @@ export function createTournamentsModule(deps) {
                     </div>
                 </div>
                 <h2>🏅 ${esc(t.name)}</h2>
-                <p class="muted-text">${esc(t.formatSummary)}</p>
                 <div class="tournament-info-grid">
                     <div class="stat-box"><span class="stat-label">Zeitraum</span><span class="stat-value">${esc(t.onlineDates)}</span></div>
                     <div class="stat-box"><span class="stat-label">Austragungsort</span><span class="stat-value">${esc(t.onlineRegion)}</span></div>
                     <div class="stat-box"><span class="stat-label">Match-Format</span><span class="stat-value">${esc(t.matchFormatSummary)}</span></div>
                     ${t.prizePoolTotal ? `<div class="stat-box"><span class="stat-label">Gesamtpreispool</span><span class="stat-value" style="color:var(--accent-orange);">${Number(t.prizePoolTotal).toLocaleString("de-DE")} $</span></div>` : (t.travelWindow ? `<div class="stat-box"><span class="stat-label">Anreise bei Weiterkommen</span><span class="stat-value">${esc(t.travelWindow)}</span></div>` : "")}
                     ${t.lanLocation ? `<div class="stat-box"><span class="stat-label">LAN Finals</span><span class="stat-value">${esc(t.lanDates ? `${t.lanDates} · ` : "")}${esc(t.lanLocation)}</span></div>` : ""}
-                    <div class="stat-box"><span class="stat-label">Teilnehmer</span><span class="stat-value">${parts.length} / ${t.maxTeams} Teams</span></div>
+                    <div class="stat-box"><span class="stat-label">Teilnehmer</span><span class="stat-value">${visInfo.canSeeLineupAndBracket ? `${parts.length} / ${t.maxTeams} Teams` : `Max. ${t.maxTeams} Teams (ab ${formatDateDE(visInfo.revealDate)} sichtbar)`}</span></div>
                 </div>
-                ${renderPrizePoolBox(t, graph)}
+                ${visInfo.canSeeLineupAndBracket ? renderPrizePoolBox(t, graph) : ""}
                 ${noticesHtml ? `<div class="tournament-notices">${noticesHtml}</div>` : ""}
-                <div class="tournament-subtabs" role="tablist">
-                    ${subTabs.map(st => `<button type="button" class="tournament-subtab ${activeSubTab === st.id ? "active" : ""}" data-action="switch-subtab" data-subtab="${esc(st.id)}">${esc(st.label)}</button>`).join("")}
-                </div>
+                ${visInfo.canSeeLineupAndBracket ? `
+                    <div class="tournament-subtabs" role="tablist">
+                        ${subTabs.map(st => `<button type="button" class="tournament-subtab ${activeSubTab === st.id ? "active" : ""}" data-action="switch-subtab" data-subtab="${esc(st.id)}">${esc(st.label)}</button>`).join("")}
+                    </div>
+                ` : ""}
                 <div>${body}</div>
             </div>
         `;
@@ -1470,6 +2584,7 @@ export function createTournamentsModule(deps) {
     function renderTournamentOverview() {
         const admin = isAdmin();
         const list = getTournamentsCache();
+        const invData = computeAllCircuitsInviteData();
         const counts = { laufend: 0, zukuenftig: 0, vergangen: 0 };
         const grouped = { laufend: [], zukuenftig: [], vergangen: [] };
 
@@ -1483,7 +2598,9 @@ export function createTournamentsModule(deps) {
         const cardsHtml = activeList.length
             ? `<div class="tournament-list">${activeList.map(t => {
                 const badge = formatCategoryBadge(getEffectiveStatus(t));
-                const graph = resolveTournamentGraph(t);
+                const visInfo = getTournamentVisibilityInfo(t, invData);
+                const graph = visInfo.canSeeLineupAndBracket ? resolveTournamentGraph(t, new Set(), invData) : null;
+                const teamCountTxt = visInfo.canSeeLineupAndBracket ? `${graph.participants.length} / ${t.maxTeams} Teams` : `Max. ${t.maxTeams} Teams`;
                 return `
                     <div class="tournament-card">
                         <div class="tournament-card-top">
@@ -1497,11 +2614,11 @@ export function createTournamentsModule(deps) {
                             <span>📅 ${esc(t.onlineDates)} (${esc(t.onlineRegion)})</span>
                             ${t.lanLocation ? `<span>✈️ LAN Finals: ${esc(t.lanDates)} (${esc(t.lanLocation)})</span>` : ""}
                             <span>🎮 Format: ${esc(t.matchFormatSummary)}</span>
-                            <span>👥 ${graph.participants.length} / ${t.maxTeams} Teams</span>
+                            <span>👥 ${esc(teamCountTxt)}</span>
                             <span>🌍 ${esc(t.inviteSummary)}</span>
                         </div>
                         <div class="tournament-card-foot">
-                            <span data-action="open-tournament" data-tournament-id="${esc(t.id)}" style="cursor:pointer;">${esc(t.formatSummary)} →</span>
+                            <span data-action="open-tournament" data-tournament-id="${esc(t.id)}" style="cursor:pointer;">Turnierdetails ansehen →</span>
                             ${admin ? `<div style="display:flex; gap:6px;"><button type="button" class="btn btn-secondary btn-small" data-action="edit-tournament" data-tournament-id="${esc(t.id)}">✏️ Bearbeiten</button><button type="button" class="btn btn-secondary btn-small" data-action="duplicate-tournament" data-tournament-id="${esc(t.id)}">📋 Duplizieren</button><button type="button" class="btn btn-danger btn-small" data-action="delete-tournament" data-tournament-id="${esc(t.id)}">🗑️</button></div>` : `<button type="button" class="btn btn-primary btn-small" data-action="open-tournament" data-tournament-id="${esc(t.id)}">Öffnen →</button>`}
                         </div>
                     </div>
@@ -1550,6 +2667,160 @@ export function createTournamentsModule(deps) {
         onTitleChange?.("Turniere");
     }
 
+    function openTournament(tournamentId) {
+        const target = getTournamentById(tournamentId);
+        if (!target) return;
+        activeCategory = getEffectiveStatus(target);
+        activeTournamentId = target.id;
+        activeSubTab = "";
+        activeOqSection = "all";
+        render();
+        document.querySelector(".content-body")?.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    // ==================== GETEILTES SLOT-PICKER MODAL (OPEN QUALIFIER) ====================
+    function openOqSlotPicker(tournamentId, matchId, slot) {
+        const t = getTournamentById(tournamentId);
+        if (!t) return;
+        const match = (t.rounds || []).flatMap(r => (r.days || []).flatMap(d => d.matches || [])).find(m => m.id === matchId);
+        if (!match) return;
+
+        oqPickerContext = { tournamentId, matchId, slot: Number(slot), match };
+        const modal = document.getElementById("oq-slot-picker-modal");
+        const title = document.getElementById("oq-sp-title");
+        const search = document.getElementById("oq-sp-search");
+        if (title) title.textContent = `${match.label} · Slot ${Number(slot) + 1} wählen`;
+        if (search) search.value = "";
+        renderOqSlotPickerList("");
+        modal?.classList.remove("hidden");
+        search?.focus();
+    }
+
+    function renderOqSlotPickerList(queryText) {
+        const listEl = document.getElementById("oq-sp-list");
+        if (!listEl || !oqPickerContext) return;
+        const t = getTournamentById(oqPickerContext.tournamentId);
+        if (!t) return;
+        const graph = resolveTournamentGraph(t);
+        const curUid = (graph.matchSlots[oqPickerContext.matchId] || [null, null])[oqPickerContext.slot] || "";
+        const allowed = getAllowedParticipantsForMatch(t, oqPickerContext.match, oqPickerContext.slot, graph, curUid);
+        const q = String(queryText || "").trim().toLowerCase();
+        const filtered = q
+            ? allowed.filter(p => {
+                const info = getResolvedParticipant(p.uid, graph.participants);
+                return info && info.displayName.toLowerCase().includes(q);
+            })
+            : allowed;
+
+        if (!filtered.length) {
+            listEl.innerHTML = `<div class="empty-team-hint">Keine verfügbaren Teams gefunden (bereits vergebene Teams dieser Runde sind ausgeblendet).</div>`;
+            return;
+        }
+        listEl.innerHTML = filtered.slice(0, 120).map(p => {
+            const info = getResolvedParticipant(p.uid, graph.participants);
+            return `<button type="button" class="oq-picker-item" data-oq-pick-uid="${esc(p.uid)}"><span>${formatParticipantLabel(info)}</span><small>${esc(info.badgeText)}</small></button>`;
+        }).join("");
+    }
+
+    function closeOqSlotPicker() {
+        oqPickerContext = null;
+        document.getElementById("oq-slot-picker-modal")?.classList.add("hidden");
+    }
+
+    // ==================== MANAGING -> E-MAIL POSTFACH ====================
+    function getPendingInviteCountForCurrentUser() {
+        const user = getCurrentUser();
+        if (!user || user.role !== "player") return 0;
+        const invData = computeAllCircuitsInviteData();
+        const emails = invData.emailsByPlayerUid.get(user.uid) || [];
+        return emails.filter(m => m.canRespond).length;
+    }
+
+    function renderManagingEmails(containerEl) {
+        if (!containerEl) return;
+        const user = getCurrentUser();
+        if (!user) return;
+        const invData = computeAllCircuitsInviteData();
+
+        if (user.role === "admin") {
+            const circuits = invData.circuits.filter(c => c.tiers.length > 0);
+            if (!circuits.length) {
+                containerEl.innerHTML = `<div class="placeholder-box"><span>Noch keine Turniere mit aktivierter E-Mail-Einladungsphase vorhanden.</span></div>`;
+                return;
+            }
+            containerEl.innerHTML = circuits.map(c => {
+                const phaseText = c.phase === "before"
+                    ? `Startet am ${formatDateDE(c.regStart)}`
+                    : (c.phase === "open" ? `Läuft bis ${formatDateDE(addDaysISO(c.regEnd, -1))}` : `Beendet (${formatDateDE(addDaysISO(c.regEnd, -1))})`);
+                const rows = c.tiers.map(tr => {
+                    const list = tr.invitedPlayers.map(ip => {
+                        const st = ip.response?.status === "accepted" ? "✅ Bestätigt" : "⏳ Ausstehend";
+                        return `<li>🛡️ ${esc(ip.name)} (${ip.points} Pkt.) – <strong>${st}</strong></li>`;
+                    }).join("");
+                    return `<div style="margin-top:8px;"><strong>${esc(tr.tierLabel)}</strong> (${tr.invitedPlayers.length} eingeladen)<ul style="margin:4px 0 0 18px; font-size:.85rem;">${list || `<li class="muted">Keine Spielerteams</li>`}</ul></div>`;
+                }).join("");
+                const declined = c.declinedPlayers.map(dp => `🛡️ ${esc(dp.name)} (${dp.points} Pkt.)`).join(", ");
+                return `
+                    <div class="email-card info-only" style="margin-top:12px;">
+                        <div class="email-top">
+                            <div><div class="email-subject">📊 Einladungs-Monitor: ${esc(c.rootName)}</div><div class="email-sender">Anmeldephase: ${esc(phaseText)}</div></div>
+                            <span class="email-status-pill info">${esc(c.phase.toUpperCase())}</span>
+                        </div>
+                        <div class="email-body">${rows}${declined ? `<div style="margin-top:8px; color:#fca5a5; font-size:.82rem;">Abgelehnt: ${esc(declined)}</div>` : ""}</div>
+                    </div>
+                `;
+            }).join("");
+            return;
+        }
+
+        const myPlayer = getPlayers().find(p => p.uid === user.uid);
+        const myPts = Number(myPlayer?.points) || 0;
+        const emails = [...(invData.emailsByPlayerUid.get(user.uid) || [])]
+            .sort((a, b) => (b.canRespond ? 1 : 0) - (a.canRespond ? 1 : 0));
+
+        if (!emails.length) {
+            containerEl.innerHTML = `<div class="placeholder-box"><span>Dein Postfach ist aktuell leer. Sobald ein Turnier-Verbund in die Einladungsphase startet und dein VRS-Ranking (${myPts.toLocaleString("de-DE")} Pkt.) ausreicht, erhältst du hier Anfragen der Turnierorganisatoren.</span></div>`;
+            return;
+        }
+
+        const statusLabels = {
+            pending: { cls: "pending", txt: "⏳ Antwort erforderlich" },
+            accepted: { cls: "accepted", txt: "✅ Teilnahme bestätigt" },
+            declined: { cls: "declined", txt: "❌ Abgelehnt" },
+            expired: { cls: "expired", txt: "⌛ Frist abgelaufen" },
+            info: { cls: "info", txt: "ℹ️ VRS-Update" }
+        };
+
+        containerEl.innerHTML = `<div class="email-list">${emails.map(mail => {
+            const st = statusLabels[mail.status] || statusLabels.info;
+            const cardCls = mail.canRespond ? "unread" : (mail.status === "accepted" ? "accepted" : (mail.status === "declined" ? "declined" : (mail.status === "expired" ? "expired" : "info-only")));
+            return `
+                <article class="email-card ${cardCls}">
+                    <div class="email-top">
+                        <div>
+                            <div class="email-subject">${esc(mail.subject)}</div>
+                            <div class="email-sender">Von: ${esc(mail.sender)} · Eingegangen am ${esc(mail.dateLabel)}</div>
+                        </div>
+                        <span class="email-status-pill ${st.cls}">${st.txt}</span>
+                    </div>
+                    <div class="email-meta-bar">
+                        <span>🏅 Bereich: <strong>${esc(mail.tierLabel)}</strong></span>
+                        <span>🔗 Verbund: ${esc(mail.chainNames.join(" → "))}</span>
+                        <span>⏳ Antwortfrist: ${esc(mail.deadlineLabel)}</span>
+                    </div>
+                    <p class="email-body">${esc(mail.body)}</p>
+                    <div class="email-actions">
+                        ${mail.canRespond ? `
+                            <button type="button" class="btn btn-primary btn-small" data-email-action="accept" data-chain-key="${esc(mail.chainRootId)}" data-tournament-id="${esc(mail.tournamentId)}" data-tier-key="${esc(mail.tierKey)}" data-tier-label="${esc(mail.tierLabel)}">✅ Teilnahme bestätigen</button>
+                            <button type="button" class="btn btn-danger btn-small" data-email-action="decline" data-chain-key="${esc(mail.chainRootId)}" data-tournament-id="${esc(mail.tournamentId)}" data-tier-key="${esc(mail.tierKey)}" data-tier-label="${esc(mail.tierLabel)}">❌ Ablehnen</button>
+                        ` : ""}
+                        <button type="button" class="btn btn-secondary btn-small" data-email-action="open-tournament" data-tournament-id="${esc(mail.tournamentId)}">🏅 Turnierseite öffnen</button>
+                    </div>
+                </article>
+            `;
+        }).join("")}</div>`;
+    }
+
     // ==================== MODULARER TURNIER-EDITOR ====================
     function populateTournamentEditorLinks(excludeId = "") {
         const others = getTournamentsCache().filter(t => t.id !== excludeId);
@@ -1576,6 +2847,20 @@ export function createTournamentsModule(deps) {
 
         const s1Type = getVal("te-stage1-type", "swiss");
         document.getElementById("te-group-advance-wrap")?.classList.toggle("hidden", s1Type === "swiss");
+
+        const poType = getVal("te-playoff-type", "single_elim");
+        const isOq = poType === "open_qualifier";
+        document.querySelectorAll(".te-oq-size-opt").forEach(opt => opt.classList.toggle("hidden", !isOq));
+        const sizeEl = document.getElementById("te-playoff-size");
+        if (sizeEl) {
+            Array.from(sizeEl.options).forEach(opt => {
+                if (opt.value === "4" || opt.value === "6") opt.classList.toggle("hidden", isOq);
+            });
+            if (isOq && (sizeEl.value === "4" || sizeEl.value === "6")) sizeEl.value = "64";
+            if (!isOq && Number(sizeEl.value) > 32) sizeEl.value = "8";
+        }
+        document.getElementById("te-oq-qualifiers-wrap")?.classList.toggle("hidden", !isOq);
+        document.getElementById("te-direct-invites-wrap")?.classList.toggle("hidden", isOq);
     }
 
     function openTournamentEditor(existing = null, isDuplicate = false) {
@@ -1592,6 +2877,7 @@ export function createTournamentsModule(deps) {
         if (existing) {
             setVal("te-name", isDuplicate ? `${existing.name} (Kopie)` : existing.name);
             setVal("te-status", existing.statusMode === "manual" ? existing.status : "auto");
+            setCheck("te-use-auto-invites", existing.useAutoInvites !== false);
             setVal("te-start-date", existing.startDate || "2025-02-01");
             setVal("te-end-date", existing.endDate || "");
             setVal("te-matches-per-day", existing.matchesPerDay || 4);
@@ -1618,9 +2904,11 @@ export function createTournamentsModule(deps) {
             setVal("te-playin-matches", existing.playInMatches || 4);
 
             setCheck("te-enable-playoffs", existing.hasPlayoffs ?? (existing.rounds?.length > 0));
-            setVal("te-playoff-type", existing.playoffType || (existing.isDoubleElimQuali ? "double_elim_quali" : (existing.isDoubleElimPlayoffs ? "double_elim" : "single_elim")));
+            setVal("te-playoff-type", existing.playoffType || (existing.isOpenQualifier ? "open_qualifier" : (existing.isDoubleElimQuali ? "double_elim_quali" : (existing.isDoubleElimPlayoffs ? "double_elim" : "single_elim"))));
+            updateModularEditorVisibility();
             setVal("te-playoff-size", existing.playoffSize || (existing.isQuali32 ? 32 : 8));
             setVal("te-direct-invites", existing.directInvites || 0);
+            setVal("te-oq-qualifiers", existing.oqQualifierCount || 4);
 
             const findAmt = (src) => existing.prizeDistribution?.find(d => d.sourceType === src)?.amount || "";
             setVal("te-prize-1", findAmt("final-winner"));
@@ -1632,6 +2920,7 @@ export function createTournamentsModule(deps) {
         } else {
             setVal("te-start-date", "2025-02-01");
             setCheck("te-enable-playoffs", true);
+            setCheck("te-use-auto-invites", true);
         }
 
         updateModularEditorVisibility();
@@ -1645,7 +2934,7 @@ export function createTournamentsModule(deps) {
     function setupEditorEvents() {
         document.getElementById("te-close")?.addEventListener("click", closeEditor);
         document.getElementById("te-cancel")?.addEventListener("click", closeEditor);
-        ["te-enable-stage1", "te-enable-playin", "te-enable-playoffs", "te-stage1-type"].forEach(id => {
+        ["te-enable-stage1", "te-enable-playin", "te-enable-playoffs", "te-stage1-type", "te-playoff-type"].forEach(id => {
             document.getElementById(id)?.addEventListener("change", updateModularEditorVisibility);
         });
 
@@ -1655,11 +2944,14 @@ export function createTournamentsModule(deps) {
 
             const existingId = getVal("te-id");
             const prev = existingId ? getTournamentById(existingId) : null;
+            const poType = getVal("te-playoff-type", "single_elim");
+            const poSize = getVal("te-playoff-size", "8");
 
             const tObj = buildTournamentFromModularConfig({
                 id: existingId || undefined,
                 name: getVal("te-name"),
                 status: getVal("te-status", "auto"),
+                useAutoInvites: getCheck("te-use-auto-invites"),
                 startDate: getVal("te-start-date", "2025-02-01"),
                 endDate: getVal("te-end-date"),
                 matchesPerDay: getVal("te-matches-per-day", "4"),
@@ -1689,14 +2981,17 @@ export function createTournamentsModule(deps) {
                 hasPlayIn: getCheck("te-enable-playin"),
                 playInMatches: getVal("te-playin-matches", "4"),
                 hasPlayoffs: getCheck("te-enable-playoffs"),
-                playoffType: getVal("te-playoff-type", "single_elim"),
-                playoffSize: getVal("te-playoff-size", "8"),
+                playoffType: poType,
+                playoffSize: poSize,
                 directInvites: getVal("te-direct-invites", "0"),
-                isQuali32: getVal("te-playoff-size") === "32",
+                oqQualifierCount: getVal("te-oq-qualifiers", "4"),
+                isQuali32: poType !== "open_qualifier" && poSize === "32",
                 existingParticipants: prev?.participants || [],
                 existingMatches: prev?.matches || {},
                 existingMatchSchedules: prev?.matchSchedules || {},
                 existingWinners: prev?.winners || {},
+                existingDefaultWins: prev?.defaultWins || {},
+                invitesBaked: prev?.invitesBaked || false,
                 sortOrder: prev?.sortOrder ?? Date.now(),
                 createdAt: prev?.createdAt ?? Date.now()
             });
@@ -1708,8 +3003,80 @@ export function createTournamentsModule(deps) {
         });
     }
 
-    // ==================== INTERAKTIONEN (ADMIN-AKTIONEN & SIEGER) ====================
+    // ==================== INTERAKTIONEN (ADMIN, E-MAILS & SLOT-PICKER) ====================
     function setupEvents() {
+        // Managing E-Mail Postfach Aktionen
+        document.getElementById("managing-emails-root")?.addEventListener("click", async (e) => {
+            const btn = e.target.closest("[data-email-action]");
+            if (!btn) return;
+            const action = btn.dataset.emailAction;
+
+            if (action === "open-tournament") {
+                onOpenTournament?.(btn.dataset.tournamentId);
+                return;
+            }
+
+            const user = getCurrentUser();
+            if (!user || user.role !== "player" || typeof savePlayerResponse !== "function") return;
+
+            const { chainKey, tournamentId, tierKey, tierLabel } = btn.dataset;
+            if (action === "accept") {
+                btn.disabled = true;
+                await savePlayerResponse(user.uid, chainKey, {
+                    status: "accepted",
+                    tierTournamentId: tournamentId,
+                    tierKey,
+                    tierLabel,
+                    gameDate: currentGameDate(),
+                    respondedAt: Date.now()
+                });
+            } else if (action === "decline") {
+                if (!confirm(`Einladung für „${tierLabel}“ wirklich ablehnen? Das nächste berechtigte Team rückt dann automatisch nach.`)) return;
+                btn.disabled = true;
+                await savePlayerResponse(user.uid, chainKey, {
+                    status: "declined",
+                    tierTournamentId: tournamentId,
+                    tierKey,
+                    tierLabel,
+                    gameDate: currentGameDate(),
+                    respondedAt: Date.now()
+                });
+            }
+        });
+
+        // Geteiltes Open-Qualifier Slot-Picker Modal
+        const oqModal = document.getElementById("oq-slot-picker-modal");
+        document.getElementById("oq-sp-close")?.addEventListener("click", closeOqSlotPicker);
+        oqModal?.addEventListener("click", (e) => { if (e.target === oqModal) closeOqSlotPicker(); });
+        document.getElementById("oq-sp-search")?.addEventListener("input", (e) => renderOqSlotPickerList(e.target.value));
+
+        const applyOqSlotValue = async (val) => {
+            if (!oqPickerContext || !isAdmin()) return;
+            const t = getTournamentById(oqPickerContext.tournamentId);
+            if (!t) return closeOqSlotPicker();
+
+            const prevUid = resolveTournamentGraph(t).matchSlots[oqPickerContext.matchId]?.[oqPickerContext.slot] || null;
+            const clone = structuredClone(t);
+            clone.matches = clone.matches || {};
+            clone.winners = clone.winners || {};
+            clone.defaultWins = clone.defaultWins || {};
+            if (!Array.isArray(clone.matches[oqPickerContext.matchId])) clone.matches[oqPickerContext.matchId] = [null, null];
+            clone.matches[oqPickerContext.matchId][oqPickerContext.slot] = val;
+            if (prevUid && clone.winners[oqPickerContext.matchId] === prevUid && val !== prevUid) {
+                delete clone.winners[oqPickerContext.matchId];
+                delete clone.defaultWins[oqPickerContext.matchId];
+            }
+            closeOqSlotPicker();
+            await saveTournamentDoc(clone);
+        };
+
+        document.getElementById("oq-sp-clear-btn")?.addEventListener("click", () => applyOqSlotValue(""));
+        document.getElementById("oq-sp-bye-btn")?.addEventListener("click", () => applyOqSlotValue("__BYE__"));
+        document.getElementById("oq-sp-list")?.addEventListener("click", (e) => {
+            const item = e.target.closest("[data-oq-pick-uid]");
+            if (item) applyOqSlotValue(item.dataset.oqPickUid);
+        });
+
         const root = document.getElementById("tournaments-root");
         if (!root) return;
 
@@ -1721,17 +3088,10 @@ export function createTournamentsModule(deps) {
             if (!el) return;
             const action = el.dataset.action;
 
-            if (action === "open-tournament") {
-                const target = getTournamentById(el.dataset.tournamentId);
-                if (target) activeCategory = getEffectiveStatus(target);
-                activeTournamentId = el.dataset.tournamentId;
-                activeSubTab = "";
-                render();
-                document.querySelector(".content-body")?.scrollTo({ top: 0, behavior: "smooth" });
-                return;
-            }
+            if (action === "open-tournament") { openTournament(el.dataset.tournamentId); return; }
             if (action === "back-to-overview") { activeTournamentId = null; render(); return; }
             if (action === "switch-subtab") { activeSubTab = el.dataset.subtab; render(); return; }
+            if (action === "oq-section") { activeOqSection = el.dataset.section || "all"; render(); return; }
 
             if (!isAdmin()) return;
 
@@ -1752,6 +3112,10 @@ export function createTournamentsModule(deps) {
             const t = getTournamentById(tId);
             if (!t) return;
 
+            if (action === "open-oq-slot-picker") {
+                openOqSlotPicker(tId, el.dataset.matchId, el.dataset.slot);
+                return;
+            }
             if (action === "edit-tournament") { openTournamentEditor(t, false); return; }
             if (action === "duplicate-tournament") { openTournamentEditor(t, true); return; }
             if (action === "delete-tournament") {
@@ -1767,6 +3131,18 @@ export function createTournamentsModule(deps) {
             clone.matches = clone.matches || {};
             clone.matchSchedules = clone.matchSchedules || {};
             clone.winners = clone.winners || {};
+            clone.defaultWins = clone.defaultWins || {};
+
+            const hasStage2Direct = Boolean(t.hasStage1 && t.hasPlayoffs && Number(t.directInvites) > 0);
+            const curSlotGroup = hasStage2Direct ? selectedTierTarget : undefined;
+
+            if (action === "bake-invites") {
+                const graph = resolveTournamentGraph(t);
+                clone.participants = graph.participants.filter(p => !p.autoQualified);
+                clone.invitesBaked = true;
+                await saveTournamentDoc(clone);
+                return;
+            }
 
             if (action === "replace-participant") {
                 const uidToReplace = el.dataset.uid;
@@ -1778,12 +3154,11 @@ export function createTournamentsModule(deps) {
 
                 const pIdx = clone.participants.findIndex(p => p.uid === uidToReplace);
                 if (pIdx !== -1) {
+                    const prevGroup = clone.participants[pIdx].slotGroup;
                     clone.participants[pIdx] = {
-                        uid: newUid,
-                        type: "player",
-                        playerUid: player.uid,
-                        username: player.username,
-                        name: getTeamName(player)
+                        uid: newUid, type: "player", playerUid: player.uid,
+                        username: player.username, name: getTeamName(player),
+                        ...(prevGroup ? { slotGroup: prevGroup } : {})
                     };
                 }
                 for (const mId of Object.keys(clone.matches)) {
@@ -1840,9 +3215,22 @@ export function createTournamentsModule(deps) {
 
             if (action === "toggle-winner") {
                 const mId = el.dataset.matchId, uid = el.dataset.uid;
-                if (!uid) return;
-                if (clone.winners[mId] === uid) delete clone.winners[mId];
-                else clone.winners[mId] = uid;
+                if (!uid || uid === "__BYE__") return;
+                if (clone.winners[mId] === uid && !clone.defaultWins[mId]) delete clone.winners[mId];
+                else {
+                    clone.winners[mId] = uid;
+                    delete clone.defaultWins[mId];
+                }
+            } else if (action === "toggle-defwin") {
+                const mId = el.dataset.matchId, uid = el.dataset.uid;
+                if (!uid || uid === "__BYE__") return;
+                if (clone.winners[mId] === uid && clone.defaultWins[mId]) {
+                    delete clone.winners[mId];
+                    delete clone.defaultWins[mId];
+                } else {
+                    clone.winners[mId] = uid;
+                    clone.defaultWins[mId] = true;
+                }
             } else if (action === "add-player-team") {
                 const graph = resolveTournamentGraph(t);
                 if (graph.participants.length >= t.maxTeams) return;
@@ -1851,7 +3239,10 @@ export function createTournamentsModule(deps) {
                 if (!player) return;
                 const uid = `player:${player.uid}`;
                 if (graph.participants.some(p => p.uid === uid)) return;
-                clone.participants.push({ uid, type: "player", playerUid: player.uid, username: player.username, name: getTeamName(player) });
+                clone.participants.push({
+                    uid, type: "player", playerUid: player.uid, username: player.username, name: getTeamName(player),
+                    ...(curSlotGroup ? { slotGroup: curSlotGroup } : {})
+                });
             } else if (action === "add-vrs-team") {
                 const graph = resolveTournamentGraph(t);
                 if (graph.participants.length >= t.maxTeams) return;
@@ -1859,28 +3250,72 @@ export function createTournamentsModule(deps) {
                 if (!uid || !selectedVrsDate || graph.participants.some(p => p.uid === uid)) return;
                 const entry = getVrsEntriesForDate(selectedVrsDate).find(x => x.uid === uid);
                 if (!entry) return;
-                clone.participants.push({ uid: entry.uid, type: "vrs", name: entry.name, points: entry.points, rank: entry.rank, region: entry.region });
+                clone.participants.push({
+                    uid: entry.uid, type: "vrs", name: entry.name, points: entry.points, rank: entry.rank, region: entry.region,
+                    ...(curSlotGroup ? { slotGroup: curSlotGroup } : {})
+                });
+            } else if (action === "add-manual-team") {
+                const graph = resolveTournamentGraph(t);
+                if (graph.participants.length >= t.maxTeams) return;
+                const input = document.getElementById("tournament-manual-team-name");
+                const teamName = input?.value.trim();
+                if (!teamName) return;
+                const uid = `manual:${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+                clone.participants.push({
+                    uid, type: "manual", name: teamName, points: 0,
+                    ...(curSlotGroup ? { slotGroup: curSlotGroup } : {})
+                });
+                if (input) input.value = "";
             } else if (action === "fill-top-vrs") {
                 const graph = resolveTournamentGraph(t);
-                let count = graph.participants.length;
                 const existing = new Set(graph.participants.map(p => p.uid));
-                for (const entry of getVrsEntriesForDate(selectedVrsDate)) {
-                    if (count >= t.maxTeams) break;
+                let entries = getVrsEntriesForDate(selectedVrsDate);
+                const val = Number(vrsFillValue) || 0;
+
+                if (vrsFillMode === "rank") {
+                    const startRank = Math.max(1, val);
+                    entries = entries.filter(e => e.rank >= startRank);
+                } else if (vrsFillMode === "maxPts") {
+                    entries = entries.filter(e => e.points <= val);
+                } else if (vrsFillMode === "minPts") {
+                    entries = entries.filter(e => e.points >= val).reverse();
+                }
+
+                let cap = t.maxTeams - graph.participants.length;
+                if (hasStage2Direct) {
+                    const split = splitBaseParticipantsByTier(t);
+                    const predSlots = t.qualifiedFrom?.slots?.length || 0;
+                    if (selectedTierTarget === "playoffs_direct") {
+                        cap = Math.max(0, (Number(t.directInvites) || 0) - split.playoffsDirectBase.length);
+                    } else {
+                        cap = Math.max(0, ((t.groupCount || 1) * (t.groupSize || 16)) - predSlots - split.stage1Base.length);
+                    }
+                }
+
+                let added = 0;
+                for (const entry of entries) {
+                    if (added >= cap || (clone.participants.length >= t.maxTeams)) break;
                     if (existing.has(entry.uid)) continue;
-                    clone.participants.push({ uid: entry.uid, type: "vrs", name: entry.name, points: entry.points, rank: entry.rank, region: entry.region });
+                    clone.participants.push({
+                        uid: entry.uid, type: "vrs", name: entry.name, points: entry.points, rank: entry.rank, region: entry.region,
+                        ...(curSlotGroup ? { slotGroup: curSlotGroup } : {})
+                    });
                     existing.add(entry.uid);
-                    count++;
+                    added++;
                 }
             } else if (action === "remove-participant") {
                 const uid = el.dataset.uid;
                 clone.participants = clone.participants.filter(p => p.uid !== uid);
                 for (const mId of Object.keys(clone.matches)) {
                     clone.matches[mId] = clone.matches[mId].map(s => (s === uid ? null : s));
-                    if (clone.winners[mId] === uid) delete clone.winners[mId];
+                    if (clone.winners[mId] === uid) {
+                        delete clone.winners[mId];
+                        delete clone.defaultWins[mId];
+                    }
                 }
             } else if (action === "clear-participants") {
                 if (!confirm("Alle manuell zugewiesenen Teams entfernen?")) return;
-                clone.participants = []; clone.matches = {}; clone.winners = {};
+                clone.participants = []; clone.matches = {}; clone.winners = {}; clone.defaultWins = {};
             } else if (action === "auto-schedule-times") {
                 const slots = ["12:00", "15:30", "18:30", "21:30", "10:00", "13:30", "17:00", "20:30"];
                 const assign = (list) => list.forEach((m, i) => {
@@ -1901,7 +3336,51 @@ export function createTournamentsModule(deps) {
                     clone.matches[m.id] = [list[idx]?.uid || null, list[idx + 1]?.uid || null];
                     idx += 2;
                 }));
-                clone.winners = {};
+                clone.winners = {}; clone.defaultWins = {};
+            } else if (action === "autofill-r16-from-r32") {
+                const winList = resolveTournamentGraph(t).r32Winners || [];
+                const r16 = t.rounds?.find(r => r.id === "r16");
+                if (!r16) return;
+                let idx = 0;
+                r16.days.forEach(d => d.matches.forEach(m => {
+                    clone.matches[m.id] = [winList[idx] || null, winList[idx + 1] || null];
+                    delete clone.winners[m.id];
+                    delete clone.defaultWins[m.id];
+                    idx += 2;
+                }));
+            } else if (action === "oq-seed-r1") {
+                const size = Number(t.playoffSize) || 64;
+                const list = resolveTournamentGraph(t).participants;
+                const seeds = generateBracketSeeds(size);
+                const r0 = t.rounds?.[0];
+                if (!r0) return;
+                let sIdx = 0;
+                r0.days.forEach(d => d.matches.forEach(m => {
+                    const seedA = seeds[sIdx], seedB = seeds[sIdx + 1];
+                    clone.matches[m.id] = [
+                        list[seedA - 1]?.uid || "__BYE__",
+                        list[seedB - 1]?.uid || "__BYE__"
+                    ];
+                    sIdx += 2;
+                }));
+                clone.winners = {}; clone.defaultWins = {};
+            } else if (action === "oq-autoresolve-byes") {
+                const r0 = t.rounds?.[0];
+                if (!r0) return;
+                r0.days.forEach(d => d.matches.forEach(m => {
+                    const sl = clone.matches[m.id] || [null, null];
+                    const has0 = Boolean(sl[0] && sl[0] !== "__BYE__");
+                    const has1 = Boolean(sl[1] && sl[1] !== "__BYE__");
+                    if (has0 && !has1) {
+                        clone.matches[m.id] = [sl[0], "__BYE__"];
+                        clone.winners[m.id] = sl[0];
+                        clone.defaultWins[m.id] = true;
+                    } else if (has1 && !has0) {
+                        clone.matches[m.id] = ["__BYE__", sl[1]];
+                        clone.winners[m.id] = sl[1];
+                        clone.defaultWins[m.id] = true;
+                    }
+                }));
             } else if (action === "autofill-de-group") {
                 const gIdx = Number(el.dataset.groupIndex);
                 const g = t.deGroups?.[gIdx];
@@ -1914,7 +3393,7 @@ export function createTournamentsModule(deps) {
                 const g = t.swissGroups?.[gIdx];
                 if (!g) return;
                 const graph = resolveTournamentGraph(t);
-                const gTeams = graph.participants.slice(gIdx * g.teamCount, (gIdx + 1) * g.teamCount);
+                const gTeams = getStage1ParticipantsRaw(t, graph.participants).slice(gIdx * g.teamCount, (gIdx + 1) * g.teamCount);
                 const active = rIdx === 0 ? gTeams.map(p => ({ uid: p.uid, wins: 0, losses: 0, opponents: new Set() })) : (graph.swissStandings[gId] || []).filter(s => s.wins < g.winsToAdvance && s.losses < g.lossesToEliminate);
                 const buckets = {};
                 active.forEach(s => { const k = `${s.wins}-${s.losses}`; if (!buckets[k]) buckets[k] = []; buckets[k].push(s); });
@@ -1945,7 +3424,7 @@ export function createTournamentsModule(deps) {
                 const firstRound = t.rounds?.[0];
                 if (!firstRound) return;
                 if (t.playoffSize === 16 && t.directInvites === 8) {
-                    const directTeams = graph.participants.slice(t.hasStage1 ? (t.groupCount * t.groupSize) : 0);
+                    const directTeams = getPlayoffDirectParticipantsRaw(t, graph.participants);
                     firstRound.days.flatMap(d => d.matches).forEach((m, i) => {
                         clone.matches[m.id] = [directTeams[i]?.uid || null, adv[7 - i] || adv[i] || null];
                     });
@@ -1963,7 +3442,7 @@ export function createTournamentsModule(deps) {
                     }));
                 }
             } else if (action === "sync-predecessor-qf" || action === "clear-matches") {
-                clone.matches = {}; clone.winners = {};
+                clone.matches = {}; clone.winners = {}; clone.defaultWins = {};
             } else {
                 return;
             }
@@ -1971,6 +3450,10 @@ export function createTournamentsModule(deps) {
         });
 
         root.addEventListener("change", async (e) => {
+            if (e.target.id === "tournament-tier-target") { selectedTierTarget = e.target.value; return; }
+            if (e.target.id === "tournament-vrs-fill-mode") { vrsFillMode = e.target.value; return; }
+            if (e.target.id === "tournament-vrs-offset-val") { vrsFillValue = e.target.value; return; }
+
             if (!isAdmin()) return;
 
             if (e.target.id === "tournaments-import-file") {
@@ -2011,9 +3494,13 @@ export function createTournamentsModule(deps) {
                 const clone = structuredClone(t);
                 clone.matches = clone.matches || {};
                 clone.winners = clone.winners || {};
+                clone.defaultWins = clone.defaultWins || {};
                 if (!Array.isArray(clone.matches[mId])) clone.matches[mId] = [null, null];
                 clone.matches[mId][slot] = val;
-                if (prevUid && clone.winners[mId] === prevUid && val !== prevUid) delete clone.winners[mId];
+                if (prevUid && clone.winners[mId] === prevUid && val !== prevUid) {
+                    delete clone.winners[mId];
+                    delete clone.defaultWins[mId];
+                }
                 await saveTournamentDoc(clone);
                 return;
             }
@@ -2036,6 +3523,10 @@ export function createTournamentsModule(deps) {
         });
 
         root.addEventListener("input", (e) => {
+            if (e.target.id === "tournament-vrs-offset-val") {
+                vrsFillValue = e.target.value;
+                return;
+            }
             if (e.target.id !== "tournament-vrs-search") return;
             vrsSearchTerm = e.target.value;
             const select = document.getElementById("tournament-vrs-select");
@@ -2048,6 +3539,9 @@ export function createTournamentsModule(deps) {
 
     return {
         render,
+        openTournament,
+        renderManagingEmails,
+        getPendingInviteCountForCurrentUser,
         getInitialSeedTournaments,
         closeEditor,
         resetActiveTournament: () => { activeTournamentId = null; },
