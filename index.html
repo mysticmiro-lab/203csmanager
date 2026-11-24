@@ -49,7 +49,7 @@
                     <li><button class="nav-item active" data-view="tutorial">📘 Tutorial</button></li>
                     <li><button class="nav-item" data-view="news">📰 HLTV - News</button></li>
                     <li><button class="nav-item" data-view="forum">💬 HLTV - Forum</button></li>
-                    <li><button class="nav-item" data-view="managing">📋 Managing</button></li>
+                    <li><button class="nav-item" data-view="managing"><span>📋 Managing</span><span id="managing-unread-badge" class="nav-badge hidden">0</span></button></li>
                     <li><button class="nav-item" data-view="transfermarkt">🔄 Transfermarkt</button></li>
                     <li><button class="nav-item" data-view="pack-opening">📦 Pack Opening</button></li>
                     <li><button class="nav-item" data-view="turniere">🏅 Turniere</button></li>
@@ -81,14 +81,38 @@
                 <section id="view-tutorial" class="view-section active"><div class="card"><h2>Willkommen beim HLTV Manager!</h2><p>Dies ist dein Browser-Manager-Spiel, das du zusammen mit deinen Freunden online spielst.</p><div class="tutorial-grid">
                     <div class="tutorial-step"><h3>1. Anmeldung &amp; Teams</h3><p>Der Admin erstellt im Admin-Panel Spielerkonten und teilt das Start-Passwort mit. Alle Änderungen an Teams, News, Chat &amp; Turnieren werden live synchronisiert.</p></div>
                     <div class="tutorial-step"><h3>2. HLTV - News, Ranking &amp; Forum</h3><p>Verfolge das globale VRS-Weltranking inklusive aller Spielerteams und tausche dich in Echtzeit im Forum mit deinen Freunden aus.</p></div>
-                    <div class="tutorial-step"><h3>3. Turniere &amp; Managing</h3><p>Sieh dir aktuelle, zukünftige und vergangene Turniere inklusive Turnierbaum und Preisgeld an.</p></div>
+                    <div class="tutorial-step"><h3>3. Turniere &amp; E-Mail-Einladungen</h3><p>Turnier-Einladungen der Organisatoren landen in deinem Postfach unter <strong>Managing → E-Mails</strong>. Turnier-Teilnehmer und Paarungen werden ab 1 Woche vor Turnierstart sichtbar.</p></div>
                 </div></div></section>
                 <section id="view-news" class="view-section">
                     <div id="admin-news-creator" class="card hidden" style="margin-bottom:20px"><h3 id="news-form-heading">Neue HLTV-News veröffentlichen (Admin)</h3><form id="news-form" class="inline-stack-form"><input type="text" id="news-title-input" placeholder="Schlagzeile..." required><textarea id="news-body-input" rows="3" placeholder="Artikeltext..." required></textarea><div class="news-form-actions"><button type="submit" id="news-submit-btn" class="btn btn-accent">News posten</button><button type="button" id="news-cancel-edit-btn" class="btn btn-secondary hidden">Bearbeiten abbrechen</button></div></form></div>
                     <div id="news-feed" class="news-list"></div>
                 </section>
                 <section id="view-forum" class="view-section"><div class="card chat-card"><div class="chat-header"><div><h2>HLTV - Forum (Spieler-Chat)</h2><p class="muted-text">Globaler Live-Kanal für alle angemeldeten Spieler &amp; Admins</p></div></div><div id="chat-messages" class="chat-messages"></div><form id="chat-form" class="chat-input-area"><input type="text" id="chat-input" placeholder="Schreibe eine Nachricht ins Forum..." required maxlength="1000" autocomplete="off"><button type="submit" class="btn btn-primary">Senden</button></form></div></section>
-                <section id="view-managing" class="view-section"><div class="card"><h2>Managing</h2><p class="muted-text">Hier kannst du zukünftig dein Team aufstellen, Taktiken festlegen und Finanzen planen.</p><div class="placeholder-box"><span>⚙️ Bereich in Vorbereitung – wird im nächsten Schritt ausgebaut.</span></div></div></section>
+                <section id="view-managing" class="view-section">
+                    <div class="card">
+                        <div class="managing-header">
+                            <div>
+                                <h2>Managing</h2>
+                                <p class="muted-text" style="margin-bottom:0;">Verwalte Turnier-Einladungen der Organisatoren im Postfach sowie dein Team-Management.</p>
+                            </div>
+                        </div>
+                        <div class="tournament-subtabs managing-tabs" role="tablist">
+                            <button type="button" class="tournament-subtab active" data-managing-tab="emails">
+                                📧 E-Mails <span id="managing-tab-email-badge" class="tournament-tab-count hidden">0</span>
+                            </button>
+                            <button type="button" class="tournament-subtab" data-managing-tab="tactics">
+                                ⚙️ Kader &amp; Taktik
+                            </button>
+                        </div>
+                        <div id="managing-emails-panel">
+                            <div id="managing-emails-root"></div>
+                        </div>
+                        <div id="managing-tactics-panel" class="hidden">
+                            <p class="muted-text">Hier kannst du zukünftig dein Team aufstellen, Taktiken festlegen und Finanzen planen.</p>
+                            <div class="placeholder-box"><span>⚙️ Bereich in Vorbereitung – wird im nächsten Schritt ausgebaut.</span></div>
+                        </div>
+                    </div>
+                </section>
                 <section id="view-transfermarkt" class="view-section"><div class="card"><h2>Transfermarkt</h2><p class="muted-text">Kaufe und verkaufe Spieler, um dein Team zu verstärken.</p><div class="placeholder-box"><span>🔄 Bereich in Vorbereitung – wird im nächsten Schritt ausgebaut.</span></div></div></section>
                 <section id="view-pack-opening" class="view-section"><div class="card"><h2>Pack Opening</h2><p class="muted-text">Öffne Spieler-Packs und ziehe neue Stars für deinen Kader.</p><div class="placeholder-box"><span>📦 Bereich in Vorbereitung – wird im nächsten Schritt ausgebaut.</span></div></div></section>
                 <section id="view-turniere" class="view-section"><div id="tournaments-root"></div></section>
@@ -110,7 +134,7 @@
 
     <div id="password-modal" class="modal-overlay hidden"><div class="modal-box"><div class="modal-header"><h2>Passwort ändern</h2><button id="close-password-modal" class="modal-close" aria-label="Schließen">&times;</button></div><form id="change-password-form"><p id="password-security-warning" class="password-security-warning">Sicherheitshinweis: Nutze hier niemals ein Passwort, das du auch für andere Dienste verwendest.</p><div class="input-group"><label for="old-password">Aktuelles Passwort</label><input type="password" id="old-password" placeholder="Aktuelles Passwort eingeben..." required></div><div class="input-group"><label for="new-password">Neues Passwort (mind. 6 Zeichen)</label><input type="password" id="new-password" placeholder="Mindestens 6 Zeichen..." required minlength="6"></div><div class="input-group"><label for="confirm-password">Neues Passwort bestätigen</label><input type="password" id="confirm-password" placeholder="Neues Passwort wiederholen..." required minlength="6"></div><div id="password-feedback" class="feedback-msg hidden" style="margin-bottom:14px"></div><div class="modal-actions"><button type="button" id="cancel-password-modal" class="btn btn-secondary">Abbrechen</button><button type="submit" class="btn btn-primary">Passwort speichern</button></div></form></div></div>
 
-<!-- Admin Turnier-Editor Modal (Baukasten-System) -->
+    <!-- Admin Turnier-Editor Modal (Baukasten-System) -->
     <div id="tournament-editor-modal" class="modal-overlay hidden">
         <div class="modal-box modal-box-wide">
             <div class="modal-header">
@@ -136,7 +160,7 @@
                         </select>
                     </div>
                     <div class="input-group">
-                        <label for="te-start-date">Startdatum (für Spieltage) *</label>
+                        <label for="te-start-date">Startdatum (für Spieltage &amp; 1-Wochen-Regel) *</label>
                         <input type="date" id="te-start-date" required>
                     </div>
                     <div class="input-group">
@@ -188,6 +212,11 @@
                         </select>
                     </div>
                 </div>
+
+                <label class="check te-stage-toggle" style="margin:2px 0 4px;">
+                    <input type="checkbox" id="te-use-auto-invites" checked>
+                    <span><strong>E-Mail-Einladungsphase aktivieren</strong> (2 bis 1 Woche vor Turnier-/Verbundstart über Managing → E-Mails)</span>
+                </label>
 
                 <!-- 2. MODULARE TURNIER-STUFEN (BAUKASTEN) -->
                 <div class="te-stages-container">
@@ -260,39 +289,53 @@
                         </div>
                     </div>
 
-                    <!-- STUFE 3: Playoffs / K.-o.-Baum -->
+                    <!-- STUFE 3: Playoffs / K.-o.-Baum / Open Qualifier -->
                     <div class="te-stage-card">
                         <label class="check te-stage-toggle">
                             <input type="checkbox" id="te-enable-playoffs" checked>
-                            <strong>Stufe 3 aktivieren: Playoffs / K.-o.-Turnierbaum</strong>
+                            <strong>Stufe 3 aktivieren: Playoffs / K.-o.-Turnierbaum / Open Qualifier</strong>
                         </label>
                         <div id="te-playoffs-box" class="te-stage-body">
                             <div class="te-grid">
                                 <div class="input-group">
-                                    <label for="te-playoff-type">Playoff-Format</label>
+                                    <label for="te-playoff-type">Playoff- / K.-o.-Format</label>
                                     <select id="te-playoff-type">
                                         <option value="single_elim" selected>Single Elimination (K.-o.-Baum)</option>
                                         <option value="double_elim">Double Elimination (Upper &amp; Lower Bracket + Grand Final)</option>
                                         <option value="double_elim_quali">Double Elimination Quali / Play-In (16 Teams → 8 weiter, 20 Matches)</option>
-
+                                        <option value="open_qualifier">🌐 Open Qualifier (8 – 512 Teilnehmer, BYE / Default Win möglich)</option>
                                     </select>
                                 </div>
                                 <div class="input-group">
-                                    <label for="te-playoff-size">Teilnehmerzahl in Playoffs</label>
+                                    <label for="te-playoff-size">Teilnehmerzahl</label>
                                     <select id="te-playoff-size">
                                         <option value="4">4 Teams (Halbfinale → Finale)</option>
-                                        <option value="6">6 Teams (IEM-Style: Top 2 mit Freilos direkt ins Halbfinale)</option>
-                                        <option value="8" selected>8 Teams (Viertelfinale → Halbfinale → Finale)</option>
-                                        <option value="16">16 Teams (Achtelfinale → VF → HF → Finale)</option>
-                                        <option value="32">32 Teams (Round of 32 → R16 → Top 8 Quali)</option>
+                                        <option value="6">6 Teams (Top 2 mit Freilos direkt ins Halbfinale)</option>
+                                        <option value="8" selected>8 Teams</option>
+                                        <option value="16">16 Teams</option>
+                                        <option value="32">32 Teams (RO32 → RO16 → Top 8 Quali)</option>
+                                        <option value="64" class="te-oq-size-opt hidden">64 Teilnehmer (Open Qualifier)</option>
+                                        <option value="128" class="te-oq-size-opt hidden">128 Teilnehmer (Open Qualifier)</option>
+                                        <option value="256" class="te-oq-size-opt hidden">256 Teilnehmer (Open Qualifier)</option>
+                                        <option value="512" class="te-oq-size-opt hidden">512 Teilnehmer (Open Qualifier)</option>
                                     </select>
                                 </div>
-                                <div class="input-group">
+                                <div class="input-group" id="te-direct-invites-wrap">
                                     <label for="te-direct-invites">Direkte Playoff-Einladungen (z. B. 24er Event)</label>
                                     <select id="te-direct-invites">
                                         <option value="0" selected>0 (Keine Direkteinladungen)</option>
                                         <option value="4">4 Teams direkt in Playoffs gesetzt</option>
                                         <option value="8">8 Teams direkt in 16er Playoffs gesetzt (z. B. 16er Swiss + 8 Direkte = 24 Teams)</option>
+                                    </select>
+                                </div>
+                                <div class="input-group hidden" id="te-oq-qualifiers-wrap">
+                                    <label for="te-oq-qualifiers">Qualifikanten (Open Qualifier)</label>
+                                    <select id="te-oq-qualifiers">
+                                        <option value="1">1 Team (Sieger / Finale)</option>
+                                        <option value="2">2 Teams (Top 2 / ab Halbfinale)</option>
+                                        <option value="4" selected>4 Teams (Top 4 / bis Viertelfinale)</option>
+                                        <option value="8">8 Teams (Top 8 / bis Achtelfinale)</option>
+                                        <option value="16">16 Teams (Top 16 / bis Round of 16)</option>
                                     </select>
                                 </div>
                             </div>
@@ -325,6 +368,24 @@
                     <button type="submit" class="btn btn-primary">Turnier speichern</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Geteiltes Team-/BYE-Auswahlmodal für große Turnierbäume (z. B. Open Qualifier 8-512) -->
+    <div id="oq-slot-picker-modal" class="modal-overlay hidden">
+        <div class="modal-box" style="max-width:480px;">
+            <div class="modal-header">
+                <h2 id="oq-sp-title">Team auswählen</h2>
+                <button id="oq-sp-close" class="modal-close" aria-label="Schließen">&times;</button>
+            </div>
+            <div class="inline-stack-form" style="margin-top:0;">
+                <input type="text" id="oq-sp-search" placeholder="Team suchen..." autocomplete="off">
+                <div class="oq-picker-quick">
+                    <button type="button" class="btn btn-secondary btn-small" id="oq-sp-clear-btn">TBD (Leeren)</button>
+                    <button type="button" class="btn btn-accent btn-small" id="oq-sp-bye-btn">Freilos (BYE) setzen</button>
+                </div>
+                <div id="oq-sp-list" class="oq-picker-list"></div>
+            </div>
         </div>
     </div>
 
