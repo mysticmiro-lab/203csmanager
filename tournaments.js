@@ -33,40 +33,117 @@ export function createTournamentsModule(deps) {
     let activeOqSection = "all";
     let oqPickerContext = null;
 
+    // Zustand für den Länder-Picker im Turnier-Editor
+    let editorSelectedCountries = new Set();
+    let editorCountryContinent = "all";
+    let editorCountrySearch = "";
+
     const TIMEZONES = {
         europe: { label: "UTC+1", offsetFromBase: 0 },
         americas: { label: "UTC-5", offsetFromBase: -6 },
         asia: { label: "UTC+8", offsetFromBase: 7 }
     };
 
+    const CONTINENTS = {
+        all: "Alle Kontinente",
+        europa: "Europa",
+        nordamerika: "Nordamerika",
+        suedamerika: "Südamerika",
+        asien: "Asien",
+        ozeanien: "Ozeanien",
+        afrika: "Afrika"
+    };
+
+    const COUNTRY_TUPLES = [
+        // Europa
+        ["Deutschland", "🇩🇪", "europa"], ["Österreich", "🇦🇹", "europa"], ["Schweiz", "🇨🇭", "europa"],
+        ["Frankreich", "🇫🇷", "europa"], ["Niederlande", "🇳🇱", "europa"], ["Belgien", "🇧🇪", "europa"],
+        ["Luxemburg", "🇱🇺", "europa"], ["Dänemark", "🇩🇰", "europa"], ["Schweden", "🇸🇪", "europa"],
+        ["Norwegen", "🇳🇴", "europa"], ["Finnland", "🇫🇮", "europa"], ["Island", "🇮🇸", "europa"],
+        ["Großbritannien", "🇬🇧", "europa"], ["Irland", "🇮🇪", "europa"], ["Polen", "🇵🇱", "europa"],
+        ["Tschechien", "🇨🇿", "europa"], ["Slowakei", "🇸🇰", "europa"], ["Ungarn", "🇭🇺", "europa"],
+        ["Spanien", "🇪🇸", "europa"], ["Portugal", "🇵🇹", "europa"], ["Italien", "🇮🇹", "europa"],
+        ["Rumänien", "🇷🇴", "europa"], ["Bulgarien", "🇧🇬", "europa"], ["Griechenland", "🇬🇷", "europa"],
+        ["Ukraine", "🇺🇦", "europa"], ["Russland", "🇷🇺", "europa"], ["Belarus", "🇧🇾", "europa"],
+        ["Estland", "🇪🇪", "europa"], ["Lettland", "🇱🇻", "europa"], ["Litauen", "🇱🇹", "europa"],
+        ["Serbien", "🇷🇸", "europa"], ["Kroatien", "🇭🇷", "europa"], ["Slowenien", "🇸🇮", "europa"],
+        ["Bosnien und Herzegowina", "🇧🇦", "europa"], ["Montenegro", "🇲🇪", "europa"], ["Nordmazedonien", "🇲🇰", "europa"],
+        ["Albanien", "🇦🇱", "europa"], ["Kosovo", "🇽🇰", "europa"], ["Moldau", "🇲🇩", "europa"],
+        ["Türkei", "🇹🇷", "europa"], ["Georgien", "🇬🇪", "europa"], ["Armenien", "🇦🇲", "europa"],
+        ["Aserbaidschan", "🇦🇿", "europa"], ["Malta", "🇲🇹", "europa"], ["Zypern", "🇨🇾", "europa"],
+        // Nordamerika
+        ["USA", "🇺🇸", "nordamerika"], ["Kanada", "🇨🇦", "nordamerika"], ["Mexiko", "🇲🇽", "nordamerika"],
+        ["Guatemala", "🇬🇹", "nordamerika"], ["Costa Rica", "🇨🇷", "nordamerika"], ["Panama", "🇵🇦", "nordamerika"],
+        ["Kuba", "🇨🇺", "nordamerika"], ["Dominikanische Republik", "🇩🇴", "nordamerika"],
+        ["Jamaika", "🇯🇲", "nordamerika"], ["Trinidad und Tobago", "🇹🇹", "nordamerika"],
+        // Südamerika
+        ["Brasilien", "🇧🇷", "suedamerika"], ["Argentinien", "🇦🇷", "suedamerika"], ["Chile", "🇨🇱", "suedamerika"],
+        ["Uruguay", "🇺🇾", "suedamerika"], ["Kolumbien", "🇨🇴", "suedamerika"], ["Peru", "🇵🇪", "suedamerika"],
+        ["Ecuador", "🇪🇨", "suedamerika"], ["Venezuela", "🇻🇪", "suedamerika"], ["Bolivien", "🇧🇴", "suedamerika"],
+        ["Paraguay", "🇵🇾", "suedamerika"],
+        // Asien
+        ["China", "🇨🇳", "asien"], ["Mongolei", "🇲🇳", "asien"], ["Südkorea", "🇰🇷", "asien"],
+        ["Japan", "🇯🇵", "asien"], ["Taiwan", "🇹🇼", "asien"], ["Hongkong", "🇭🇰", "asien"],
+        ["Kasachstan", "🇰🇿", "asien"], ["Usbekistan", "🇺🇿", "asien"], ["Kirgisistan", "🇰🇬", "asien"],
+        ["Tadschikistan", "🇹🇯", "asien"], ["Turkmenistan", "🇹🇲", "asien"], ["Indien", "🇮🇳", "asien"],
+        ["Pakistan", "🇵🇰", "asien"], ["Bangladesch", "🇧🇩", "asien"], ["Indonesien", "🇮🇩", "asien"],
+        ["Malaysia", "🇲🇾", "asien"], ["Singapur", "🇸🇬", "asien"], ["Thailand", "🇹🇭", "asien"],
+        ["Vietnam", "🇻🇳", "asien"], ["Philippinen", "🇵🇭", "asien"], ["Israel", "🇮🇱", "asien"],
+        ["Jordanien", "🇯🇴", "asien"], ["Saudi-Arabien", "🇸🇦", "asien"],
+        ["Vereinigte Arabische Emirate", "🇦🇪", "asien"], ["Katar", "🇶🇦", "asien"], ["Kuwait", "🇰🇼", "asien"],
+        ["Libanon", "🇱🇧", "asien"], ["Iran", "🇮🇷", "asien"], ["Irak", "🇮🇶", "asien"],
+        // Ozeanien
+        ["Australien", "🇦🇺", "ozeanien"], ["Neuseeland", "🇳🇿", "ozeanien"],
+        ["Fidschi", "🇫🇯", "ozeanien"], ["Papua-Neuguinea", "🇵🇬", "ozeanien"],
+        // Afrika
+        ["Südafrika", "🇿🇦", "afrika"], ["Ägypten", "🇪🇬", "afrika"], ["Marokko", "🇲🇦", "afrika"],
+        ["Tunesien", "🇹🇳", "afrika"], ["Algerien", "🇩🇿", "afrika"], ["Nigeria", "🇳🇬", "afrika"],
+        ["Kenia", "🇰🇪", "afrika"], ["Ghana", "🇬🇭", "afrika"], ["Senegal", "🇸🇳", "afrika"],
+        ["Äthiopien", "🇪🇹", "afrika"], ["Angola", "🇦🇴", "afrika"], ["Namibia", "🇳🇦", "afrika"],
+        ["Mauritius", "🇲🇺", "afrika"]
+    ];
+
+    const COUNTRIES_LIST = COUNTRY_TUPLES.map(([name, flag, continent]) => ({
+        name,
+        flag,
+        continent,
+        norm: name.toLowerCase()
+    }));
+
+    const COUNTRY_BY_NORM = new Map(COUNTRIES_LIST.map(c => [c.norm, c]));
+
     const COUNTRY_ALIASES = {
-        de: "deutschland", ger: "deutschland", deu: "deutschland", germany: "deutschland", deutschland: "deutschland",
-        at: "österreich", aut: "österreich", austria: "österreich", oesterreich: "österreich", österreich: "österreich",
-        ch: "schweiz", sui: "schweiz", che: "schweiz", switzerland: "schweiz", schweiz: "schweiz",
-        fr: "frankreich", fra: "frankreich", france: "frankreich", frankreich: "frankreich",
-        nl: "niederlande", ned: "niederlande", nld: "niederlande", netherlands: "niederlande", holland: "niederlande", niederlande: "niederlande",
-        be: "belgien", bel: "belgien", belgium: "belgien", belgien: "belgien",
-        lu: "luxemburg", lux: "luxemburg", luxembourg: "luxemburg", luxemburg: "luxemburg",
-        dk: "dänemark", den: "dänemark", dnk: "dänemark", denmark: "dänemark", daenemark: "dänemark", dänemark: "dänemark",
-        se: "schweden", swe: "schweden", sweden: "schweden", schweden: "schweden",
-        no: "norwegen", nor: "norwegen", norway: "norwegen", norwegen: "norwegen",
-        fi: "finnland", fin: "finnland", finland: "finnland", finnland: "finnland",
-        pl: "polen", pol: "polen", poland: "polen", polen: "polen",
-        cz: "tschechien", cze: "tschechien", czechia: "tschechien", tschechien: "tschechien",
-        uk: "großbritannien", gb: "großbritannien", gbr: "großbritannien", england: "großbritannien", "united kingdom": "großbritannien", großbritannien: "großbritannien", grossbritannien: "großbritannien",
-        es: "spanien", esp: "spanien", spain: "spanien", spanien: "spanien",
-        pt: "portugal", por: "portugal", prt: "portugal", portugal: "portugal",
-        it: "italien", ita: "italien", italy: "italien", italien: "italien",
-        ru: "russland", rus: "russland", russia: "russland", russland: "russland",
-        ua: "ukraine", ukr: "ukraine", ukraine: "ukraine",
-        tr: "türkei", tur: "türkei", turkey: "türkei", tuerkei: "türkei", türkei: "türkei",
-        us: "usa", usa: "usa", "united states": "usa",
-        ca: "kanada", can: "kanada", canada: "kanada", kanada: "kanada",
-        br: "brasilien", bra: "brasilien", brazil: "brasilien", brasilien: "brasilien",
-        ar: "argentinien", arg: "argentinien", argentina: "argentinien", argentinien: "argentinien",
-        au: "australien", aus: "australien", australia: "australien", australien: "australien",
-        cn: "china", chn: "china", china: "china",
-        mn: "mongolei", mgl: "mongolei", mongolia: "mongolei", mongolei: "mongolei"
+        de: "deutschland", ger: "deutschland", deu: "deutschland", germany: "deutschland",
+        at: "österreich", aut: "österreich", austria: "österreich", oesterreich: "österreich",
+        ch: "schweiz", sui: "schweiz", che: "schweiz", switzerland: "schweiz",
+        fr: "frankreich", fra: "frankreich", france: "frankreich",
+        nl: "niederlande", ned: "niederlande", nld: "niederlande", netherlands: "niederlande", holland: "niederlande",
+        be: "belgien", bel: "belgien", belgium: "belgien",
+        lu: "luxemburg", lux: "luxemburg", luxembourg: "luxemburg",
+        dk: "dänemark", den: "dänemark", dnk: "dänemark", denmark: "dänemark", daenemark: "dänemark",
+        se: "schweden", swe: "schweden", sweden: "schweden",
+        no: "norwegen", nor: "norwegen", norway: "norwegen",
+        fi: "finnland", fin: "finnland", finland: "finnland",
+        uk: "großbritannien", gb: "großbritannien", gbr: "großbritannien", england: "großbritannien", "united kingdom": "großbritannien", grossbritannien: "großbritannien",
+        pl: "polen", pol: "polen", poland: "polen",
+        cz: "tschechien", cze: "tschechien", czechia: "tschechien",
+        es: "spanien", esp: "spanien", spain: "spanien",
+        pt: "portugal", por: "portugal", prt: "portugal",
+        it: "italien", ita: "italien", italy: "italien",
+        ru: "russland", rus: "russland", russia: "russland",
+        ua: "ukraine", ukr: "ukraine",
+        tr: "türkei", tur: "türkei", turkey: "türkei", tuerkei: "türkei",
+        us: "usa", "united states": "usa",
+        ca: "kanada", can: "kanada", canada: "kanada",
+        br: "brasilien", bra: "brasilien", brazil: "brasilien",
+        ar: "argentinien", arg: "argentinien", argentina: "argentinien",
+        au: "australien", aus: "australien", australia: "australien",
+        cn: "china", chn: "china",
+        mn: "mongolei", mgl: "mongolei", mongolia: "mongolei",
+        kr: "südkorea", kor: "südkorea", "south korea": "südkorea",
+        jp: "japan", jpn: "japan",
+        kz: "kasachstan", kaz: "kasachstan", kazakhstan: "kasachstan",
+        za: "südafrika", rsa: "südafrika", "south africa": "südafrika"
     };
 
     const esc = (str) => {
@@ -174,14 +251,74 @@ export function createTournamentsModule(deps) {
         return COUNTRY_ALIASES[s] || s;
     }
 
+    function getCountryInfo(raw) {
+        const norm = normalizeCountryName(raw);
+        const found = COUNTRY_BY_NORM.get(norm);
+        if (found) return found;
+        return { name: String(raw || "").trim(), flag: "🏳️", continent: "", norm };
+    }
+
+    function formatCountryWithFlag(raw) {
+        const info = getCountryInfo(raw);
+        return `${info.flag} ${info.name}`;
+    }
+
     function parseAllowedCountries(raw) {
-        if (Array.isArray(raw)) {
-            return raw.map(s => String(s || "").trim()).filter(Boolean);
+        const items = Array.isArray(raw)
+            ? raw.map(s => String(s || "").trim()).filter(Boolean)
+            : String(raw || "").split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+        const seen = new Set();
+        const out = [];
+        items.forEach(item => {
+            const info = getCountryInfo(item);
+            if (info.name && !seen.has(info.norm)) {
+                seen.add(info.norm);
+                out.push(info.name);
+            }
+        });
+        return out;
+    }
+
+    function getMatchedContinents(allowedCountries) {
+        const normSet = new Set((allowedCountries || []).map(normalizeCountryName));
+        const matched = [];
+        Object.keys(CONTINENTS).filter(k => k !== "all").forEach(contKey => {
+            const contList = COUNTRIES_LIST.filter(c => c.continent === contKey);
+            if (contList.length > 0 && contList.every(c => normSet.has(c.norm))) {
+                matched.push({ key: contKey, label: CONTINENTS[contKey], count: contList.length });
+            }
+        });
+        return matched;
+    }
+
+    function formatAllowedCountriesSummary(allowedCountries, short = false) {
+        if (!Array.isArray(allowedCountries) || allowedCountries.length === 0) {
+            return "Alle Länder erlaubt";
         }
-        return String(raw || "")
-            .split(/[,;]+/)
-            .map(s => s.trim())
-            .filter(Boolean);
+        const fullConts = getMatchedContinents(allowedCountries);
+        if (fullConts.length > 0 && short) {
+            const contLabel = fullConts.map(c => `${c.label} (${c.count})`).join(", ");
+            return allowedCountries.length === fullConts.reduce((s, c) => s + c.count, 0)
+                ? contLabel
+                : `${allowedCountries.length} Länder (inkl. ${fullConts.map(c => c.label).join(", ")})`;
+        }
+        if (allowedCountries.length <= 4) {
+            return allowedCountries.map(formatCountryWithFlag).join(", ");
+        }
+        if (short) {
+            return `${allowedCountries.slice(0, 3).map(formatCountryWithFlag).join(", ")} (+${allowedCountries.length - 3})`;
+        }
+        return `${allowedCountries.length} Länder (${fullConts.length ? fullConts.map(c => c.label).join(", ") : allowedCountries.slice(0, 4).map(formatCountryWithFlag).join(", ") + ", …"})`;
+    }
+
+    function renderCountryPillsHtml(allowedCountries) {
+        if (!Array.isArray(allowedCountries) || allowedCountries.length === 0) return "";
+        const pills = allowedCountries.map(c => `<span class="country-pill">${esc(formatCountryWithFlag(c))}</span>`).join("");
+        if (allowedCountries.length > 14) {
+            const contSummary = formatAllowedCountriesSummary(allowedCountries, true);
+            return `<details style="margin-top:8px;"><summary style="cursor:pointer; font-size:.82rem; color:#93c5fd; font-weight:600;">🌍 ${esc(contSummary)} – alle ${allowedCountries.length} Länder anzeigen</summary><div class="country-pill-list">${pills}</div></details>`;
+        }
+        return `<div class="country-pill-list">${pills}</div>`;
     }
 
     function doesPlayerTeamMeetCountryRule(player, allowedCountries) {
@@ -193,7 +330,6 @@ export function createTournamentsModule(deps) {
             : (Array.isArray(player?.roster) ? player.roster : []);
         const withCountry = rosterSource.filter(p => p && typeof p === "object" && (p.country || p.land || p.nationality || p.nation));
 
-        // Solange noch keine Profis mit Länderinfo im Kader existieren, blockiert die Prüfung noch nicht
         if (withCountry.length === 0) {
             return { allowed: true, matchingCount: 0, checked: false, pendingRoster: true };
         }
@@ -2695,7 +2831,7 @@ export function createTournamentsModule(deps) {
         ` : "";
 
         const countryNoticeHtml = Array.isArray(t.allowedCountries) && t.allowedCountries.length > 0
-            ? `<div class="tournament-notice info"><strong>🌍 Länderbegrenzung aktiv</strong><span>An diesem Turnier dürfen nur Teams teilnehmen, deren Kader mehrheitlich (mindestens 3 Spieler) aus folgendem Land / folgenden Ländern stammt: <strong>${esc(t.allowedCountries.join(", "))}</strong>.</span></div>`
+            ? `<div class="tournament-notice info"><strong>🌍 Länderbegrenzung aktiv</strong><span>An diesem Turnier dürfen nur Teams teilnehmen, deren Kader mehrheitlich (mindestens 3 Spieler) aus folgendem Land / folgenden Ländern stammt:</span>${renderCountryPillsHtml(t.allowedCountries)}</div>`
             : "";
 
         const noticesHtml = (t.notices || []).map(n => `
@@ -2743,24 +2879,18 @@ export function createTournamentsModule(deps) {
         const monthIdx = monthNum - 1;
         const firstDay = new Date(Date.UTC(year, monthIdx, 1));
         const daysInMonth = new Date(Date.UTC(year, monthIdx + 1, 0)).getUTCDate();
-        const startOffset = (firstDay.getUTCDay() + 6) % 7; // Mo = 0 .. So = 6
+        const startOffset = (firstDay.getUTCDay() + 6) % 7;
         const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7;
 
         const cells = [];
         for (let i = 0; i < totalCells; i++) {
             const dt = new Date(Date.UTC(year, monthIdx, 1 - startOffset + i));
             const iso = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
-            cells.push({
-                iso,
-                dayNum: dt.getUTCDate(),
-                inMonth: dt.getUTCMonth() === monthIdx
-            });
+            cells.push({ iso, dayNum: dt.getUTCDate(), inMonth: dt.getUTCMonth() === monthIdx });
         }
 
         const weeks = [];
-        for (let i = 0; i < cells.length; i += 7) {
-            weeks.push(cells.slice(i, i + 7));
-        }
+        for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
         const withBounds = sortedList.map(t => ({ t, bounds: getTournamentDateBounds(t), status: getEffectiveStatus(t) }));
 
@@ -2771,7 +2901,6 @@ export function createTournamentsModule(deps) {
                 .filter(item => item.bounds.start <= wEnd && item.bounds.end >= wStart)
                 .sort((a, b) => a.bounds.start.localeCompare(b.bounds.start) || b.bounds.end.localeCompare(a.bounds.end) || a.t.name.localeCompare(b.t.name, "de"));
 
-            // Lanes pro Woche vergeben, sodass sich überlappende Turnierbalken sauber untereinander stapeln
             const lanes = [];
             overlapping.forEach(item => {
                 const startCol = Math.max(0, week.findIndex(d => d.iso >= item.bounds.start));
@@ -2875,7 +3004,9 @@ export function createTournamentsModule(deps) {
                 const visInfo = getTournamentVisibilityInfo(t, invData);
                 const graph = visInfo.canSeeLineupAndBracket ? resolveTournamentGraph(t, new Set(), invData) : null;
                 const teamCountTxt = visInfo.canSeeLineupAndBracket ? `${graph.participants.length} / ${t.maxTeams} Teams` : `${t.maxTeams} Teams`;
-                const countriesTxt = Array.isArray(t.allowedCountries) && t.allowedCountries.length > 0 ? `<span>🌍 Nur: ${esc(t.allowedCountries.join(", "))}</span>` : "";
+                const countriesTxt = Array.isArray(t.allowedCountries) && t.allowedCountries.length > 0
+                    ? `<span>🌍 Nur: ${esc(formatAllowedCountriesSummary(t.allowedCountries, true))}</span>`
+                    : "";
                 return `
                     <div class="tournament-card">
                         <div class="tournament-card-top">
@@ -3109,7 +3240,63 @@ export function createTournamentsModule(deps) {
         }).join("")}</div>`;
     }
 
-    // ==================== MODULARER TURNIER-EDITOR ====================
+    // ==================== LÄNDER-PICKER & MODULARER TURNIER-EDITOR ====================
+    function getFilteredEditorCountries() {
+        const q = editorCountrySearch.trim().toLowerCase();
+        return COUNTRIES_LIST.filter(c => {
+            if (editorCountryContinent !== "all" && c.continent !== editorCountryContinent) return false;
+            if (q && !c.norm.includes(q)) return false;
+            return true;
+        });
+    }
+
+    function renderEditorCountryPicker() {
+        const listEl = document.getElementById("te-country-list");
+        const summaryEl = document.getElementById("te-country-summary");
+        const clearBtn = document.getElementById("te-country-clear-all");
+        const selVisBtn = document.getElementById("te-country-select-visible");
+        const deselVisBtn = document.getElementById("te-country-deselect-visible");
+
+        document.querySelectorAll("#te-continent-tabs .te-continent-btn").forEach(btn => {
+            btn.classList.toggle("active", btn.dataset.continent === editorCountryContinent);
+        });
+
+        if (selVisBtn && deselVisBtn) {
+            if (editorCountryContinent !== "all" && !editorCountrySearch.trim()) {
+                const cName = CONTINENTS[editorCountryContinent] || "";
+                selVisBtn.textContent = `✅ Alle in ${cName} auswählen`;
+                deselVisBtn.textContent = `❌ ${cName} abwählen`;
+            } else {
+                selVisBtn.textContent = "✅ Alle sichtbaren auswählen";
+                deselVisBtn.textContent = "❌ Sichtbare abwählen";
+            }
+        }
+
+        const selArr = Array.from(editorSelectedCountries);
+        if (summaryEl) {
+            summaryEl.textContent = selArr.length === 0
+                ? "Alle Länder erlaubt (keine Einschränkung)"
+                : `${selArr.length} Land/Länder gewählt: ${formatAllowedCountriesSummary(selArr, true)}`;
+        }
+        clearBtn?.classList.toggle("hidden", selArr.length === 0);
+
+        if (!listEl) return;
+        const filtered = getFilteredEditorCountries();
+        if (!filtered.length) {
+            listEl.innerHTML = `<div class="empty-team-hint">Kein passendes Land gefunden.</div>`;
+            return;
+        }
+        listEl.innerHTML = filtered.map(c => {
+            const isSel = editorSelectedCountries.has(c.name);
+            return `
+                <label class="te-country-item ${isSel ? "selected" : ""}">
+                    <input type="checkbox" data-country-name="${esc(c.name)}" ${isSel ? "checked" : ""}>
+                    <span>${c.flag} ${esc(c.name)}</span>
+                </label>
+            `;
+        }).join("");
+    }
+
     function populateTournamentEditorLinks(excludeId = "") {
         const others = getTournamentsCache().filter(t => t.id !== excludeId);
         const opts = `<option value="">– Keine Verknüpfung –</option>` + others.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
@@ -3162,11 +3349,15 @@ export function createTournamentsModule(deps) {
         if (titleEl) titleEl.textContent = existing ? (isDuplicate ? "Turnier duplizieren" : "Turnier bearbeiten") : "Neues Turnier erstellen (Baukasten)";
         setVal("te-id", editId);
 
+        editorCountryContinent = "all";
+        editorCountrySearch = "";
+        setVal("te-country-search", "");
+        editorSelectedCountries = new Set(parseAllowedCountries(existing?.allowedCountries || []));
+
         if (existing) {
             setVal("te-name", isDuplicate ? `${existing.name} (Kopie)` : existing.name);
             setVal("te-status", existing.statusMode === "manual" ? existing.status : "auto");
             setCheck("te-use-auto-invites", existing.useAutoInvites !== false);
-            setVal("te-allowed-countries", Array.isArray(existing.allowedCountries) ? existing.allowedCountries.join(", ") : "");
             setVal("te-start-date", existing.startDate || "2025-02-01");
             setVal("te-end-date", existing.endDate || "");
             setVal("te-matches-per-day", existing.matchesPerDay || 4);
@@ -3212,6 +3403,7 @@ export function createTournamentsModule(deps) {
             setCheck("te-use-auto-invites", true);
         }
 
+        renderEditorCountryPicker();
         updateModularEditorVisibility();
         modal.classList.remove("hidden");
     }
@@ -3225,6 +3417,38 @@ export function createTournamentsModule(deps) {
         document.getElementById("te-cancel")?.addEventListener("click", closeEditor);
         ["te-enable-stage1", "te-enable-playin", "te-enable-playoffs", "te-stage1-type", "te-playoff-type"].forEach(id => {
             document.getElementById(id)?.addEventListener("change", updateModularEditorVisibility);
+        });
+
+        // Länder-Picker Events
+        document.getElementById("te-continent-tabs")?.addEventListener("click", (e) => {
+            const btn = e.target.closest("[data-continent]");
+            if (!btn) return;
+            editorCountryContinent = btn.dataset.continent;
+            renderEditorCountryPicker();
+        });
+        document.getElementById("te-country-search")?.addEventListener("input", (e) => {
+            editorCountrySearch = e.target.value;
+            renderEditorCountryPicker();
+        });
+        document.getElementById("te-country-list")?.addEventListener("change", (e) => {
+            const cb = e.target.closest("input[type='checkbox'][data-country-name]");
+            if (!cb) return;
+            const cName = cb.dataset.countryName;
+            if (cb.checked) editorSelectedCountries.add(cName);
+            else editorSelectedCountries.delete(cName);
+            renderEditorCountryPicker();
+        });
+        document.getElementById("te-country-select-visible")?.addEventListener("click", () => {
+            getFilteredEditorCountries().forEach(c => editorSelectedCountries.add(c.name));
+            renderEditorCountryPicker();
+        });
+        document.getElementById("te-country-deselect-visible")?.addEventListener("click", () => {
+            getFilteredEditorCountries().forEach(c => editorSelectedCountries.delete(c.name));
+            renderEditorCountryPicker();
+        });
+        document.getElementById("te-country-clear-all")?.addEventListener("click", () => {
+            editorSelectedCountries.clear();
+            renderEditorCountryPicker();
         });
 
         document.getElementById("te-form")?.addEventListener("submit", async (e) => {
@@ -3241,7 +3465,7 @@ export function createTournamentsModule(deps) {
                 name: getVal("te-name"),
                 status: getVal("te-status", "auto"),
                 useAutoInvites: getCheck("te-use-auto-invites"),
-                allowedCountries: getVal("te-allowed-countries"),
+                allowedCountries: Array.from(editorSelectedCountries),
                 startDate: getVal("te-start-date", "2025-02-01"),
                 endDate: getVal("te-end-date"),
                 matchesPerDay: getVal("te-matches-per-day", "4"),
