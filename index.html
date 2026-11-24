@@ -81,7 +81,7 @@
                 <section id="view-tutorial" class="view-section active"><div class="card"><h2>Willkommen beim HLTV Manager!</h2><p>Dies ist dein Browser-Manager-Spiel, das du zusammen mit deinen Freunden online spielst.</p><div class="tutorial-grid">
                     <div class="tutorial-step"><h3>1. Anmeldung &amp; Teams</h3><p>Der Admin erstellt im Admin-Panel Spielerkonten und teilt das Start-Passwort mit. Alle Änderungen an Teams, News, Chat &amp; Turnieren werden live synchronisiert.</p></div>
                     <div class="tutorial-step"><h3>2. HLTV - News, Ranking &amp; Forum</h3><p>Verfolge das globale VRS-Weltranking inklusive aller Spielerteams und tausche dich in Echtzeit im Forum mit deinen Freunden aus.</p></div>
-                    <div class="tutorial-step"><h3>3. Turniere &amp; E-Mail-Einladungen</h3><p>Turnier-Einladungen der Organisatoren landen in deinem Postfach unter <strong>Managing → E-Mails</strong>. Turnier-Teilnehmer und Paarungen werden ab 1 Woche vor Turnierstart sichtbar.</p></div>
+                    <div class="tutorial-step"><h3>3. Turniere &amp; E-Mail-Einladungen</h3><p>Turnier-Einladungen der Organisatoren landen während der 2-wöchigen Anmeldephase in deinem Postfach unter <strong>Managing → E-Mails</strong>. Teams und Paarungen werden ab 1 Woche vor Turnierstart (bei Open Qualifiern ab 1 Tag vorher) sichtbar.</p></div>
                 </div></div></section>
                 <section id="view-news" class="view-section">
                     <div id="admin-news-creator" class="card hidden" style="margin-bottom:20px"><h3 id="news-form-heading">Neue HLTV-News veröffentlichen (Admin)</h3><form id="news-form" class="inline-stack-form"><input type="text" id="news-title-input" placeholder="Schlagzeile..." required><textarea id="news-body-input" rows="3" placeholder="Artikeltext..." required></textarea><div class="news-form-actions"><button type="submit" id="news-submit-btn" class="btn btn-accent">News posten</button><button type="button" id="news-cancel-edit-btn" class="btn btn-secondary hidden">Bearbeiten abbrechen</button></div></form></div>
@@ -160,7 +160,7 @@
                         </select>
                     </div>
                     <div class="input-group">
-                        <label for="te-start-date">Startdatum (für Spieltage &amp; 1-Wochen-Regel) *</label>
+                        <label for="te-start-date">Startdatum (für Spieltage &amp; Sichtbarkeit) *</label>
                         <input type="date" id="te-start-date" required>
                     </div>
                     <div class="input-group">
@@ -215,7 +215,7 @@
 
                 <label class="check te-stage-toggle" style="margin:2px 0 4px;">
                     <input type="checkbox" id="te-use-auto-invites" checked>
-                    <span><strong>E-Mail-Einladungsphase aktivieren</strong> (2 bis 1 Woche vor Turnier-/Verbundstart über Managing → E-Mails)</span>
+                    <span><strong>E-Mail-Einladungsphase aktivieren</strong> (2-wöchige Anmeldephase über Managing → E-Mails; Teams sichtbar ab 1 Woche bzw. beim Open Qualifier 1 Tag vor Start)</span>
                 </label>
 
                 <!-- 2. MODULARE TURNIER-STUFEN (BAUKASTEN) -->
@@ -358,6 +358,11 @@
                     <div class="input-group"><label for="te-prize-2">2. Platz ($)</label><input type="number" id="te-prize-2" min="0" placeholder="100000"></div>
                     <div class="input-group"><label for="te-prize-34">3.–4. Platz je ($)</label><input type="number" id="te-prize-34" min="0" placeholder="50000"></div>
                     <div class="input-group"><label for="te-prize-58">5.–8. Platz je ($)</label><input type="number" id="te-prize-58" min="0" placeholder="25000"></div>
+                </div>
+
+                <div class="input-group">
+                    <label for="te-allowed-countries">Länderbegrenzung (optional, kommagetrennt – Mehrheit / min. 3 Spieler aus diesen Ländern)</label>
+                    <input type="text" id="te-allowed-countries" placeholder="z. B. Deutschland, Österreich, Schweiz (leer = alle Länder erlaubt)">
                 </div>
 
                 <div class="input-group"><label for="te-location-notice">Hinweis 1 (z. B. Standort-Pflicht / Info, optional)</label><textarea id="te-location-notice" rows="2" placeholder="z. B. Dein Team muss sich in Europa befinden..."></textarea></div>
