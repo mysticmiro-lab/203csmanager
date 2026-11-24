@@ -149,9 +149,9 @@ function translateFirebaseError(err) {
     return err?.message || "Ein unbekannter Fehler ist aufgetreten.";
 }
 
-function isTypingInTournamentInputs() {
+function isTypingInTournamentFilter() {
     const id = document.activeElement?.id || "";
-    return id === "tournament-vrs-search" || id === "tournament-manual-team-name" || id === "vrs-autofill-value";
+    return id === "tournament-vrs-search" || id === "tournament-manual-team-name" || id === "tournament-vrs-offset-val";
 }
 
 // ==================== TURNIER-MODUL EINBINDEN ====================
@@ -172,10 +172,14 @@ const tournamentsModule = createTournamentsModule({
         await deleteDoc(doc(db, "tournaments", id));
     },
     savePlayerResponse: async (uid, chainKey, responseObj) => {
-        const safeKey = String(chainKey || "").replace(/\./g, "_");
+        const safeKey = String(chainKey).replace(/[^a-zA-Z0-9_-]/g, "_");
         await updateDoc(doc(db, "players", uid), {
             [`tournamentResponses.${safeKey}`]: responseObj
         });
+    },
+    onOpenTournament: (tournamentId) => {
+        switchView("turniere");
+        tournamentsModule.openTournament(tournamentId);
     },
     onTitleChange: (title) => {
         if (currentView === "turniere") {
@@ -295,8 +299,9 @@ function startRealtimeListeners() {
         settingsLoaded = true;
         renderGameDateUI();
         renderRanking();
-        if (!isTypingInTournamentInputs()) tournamentsModule.render();
-        renderManagingSection();
+        if (!isTypingInTournamentFilter()) tournamentsModule.render();
+        renderManagingView();
+        updateManagingBadges();
         maybeSeedInitialTournaments();
     }));
 
@@ -313,8 +318,9 @@ function startRealtimeListeners() {
             openTeamDetails(selectedTeamUid, false);
         }
         renderRanking();
-        if (!isTypingInTournamentInputs()) tournamentsModule.render();
-        renderManagingSection();
+        if (!isTypingInTournamentFilter()) tournamentsModule.render();
+        renderManagingView();
+        updateManagingBadges();
     }));
 
     unsubscribers.push(onSnapshot(query(collection(db, "news"), orderBy("createdAt", "desc")), async (snap) => {
@@ -348,8 +354,9 @@ function startRealtimeListeners() {
             .sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999) || (a.createdAt ?? 0) - (b.createdAt ?? 0));
         tournamentsLoaded = true;
         maybeSeedInitialTournaments();
-        if (!isTypingInTournamentInputs()) tournamentsModule.render();
-        renderManagingSection();
+        if (!isTypingInTournamentFilter()) tournamentsModule.render();
+        renderManagingView();
+        updateManagingBadges();
     }));
 }
 
@@ -377,6 +384,7 @@ async function maybeSeedInitialTournaments() {
         seedingTournaments = false;
     }
 }
+
 async function setGlobalGameDate(newIso) {
     if (currentUser?.role !== "admin" || !/^\d{4}-\d{2}-\d{2}$/.test(newIso)) return;
     const bestVrs = getBestVrsDateForGameDate(newIso);
@@ -493,7 +501,8 @@ function showApp() {
     renderRanking();
     renderNews();
     renderForumMessages();
-    renderManagingSection();
+    renderManagingView();
+    updateManagingBadges();
     tournamentsModule.render();
     switchView("tutorial");
 }
@@ -538,12 +547,12 @@ function setupAppEvents() {
         switchView(view);
     });
 
-    // Managing Sub-Tabs (E-Mails / Kader & Taktik)
+    // Managing Tabs (E-Mails vs. Kader & Taktik)
     document.getElementById("view-managing")?.addEventListener("click", (e) => {
         const tabBtn = e.target.closest("[data-managing-tab]");
         if (!tabBtn) return;
-        currentManagingTab = tabBtn.dataset.managingTab || "emails";
-        renderManagingSection();
+        currentManagingTab = tabBtn.dataset.managingTab;
+        syncManagingTabUI();
     });
 
     // Admin: Neuen Spieler erstellen
@@ -631,7 +640,7 @@ function setupAppEvents() {
         }
     });
 
-    // Forum-Chat (inkl. Datum & Uhrzeit)
+    // Forum-Chat (mit Datum + Uhrzeit)
     document.getElementById("chat-form").addEventListener("submit", async (e) => {
         e.preventDefault();
         const input = document.getElementById("chat-input");
@@ -647,7 +656,7 @@ function setupAppEvents() {
                 text,
                 date: now.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }),
                 time: now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
-                createdAt: now.getTime()
+                createdAt: Date.now()
             });
             input.value = "";
         } catch (err) {
@@ -815,32 +824,43 @@ function switchView(viewName) {
 
     if (viewName === "forum") scrollChatToBottom();
     if (viewName === "turniere") tournamentsModule.render();
-    if (viewName === "managing") renderManagingSection();
+    if (viewName === "managing") {
+        syncManagingTabUI();
+        renderManagingView();
+    }
     if (viewName === "ranking") renderRanking();
 }
 
-function renderManagingSection() {
-    document.querySelectorAll("#view-managing [data-managing-tab]").forEach(btn => {
+function syncManagingTabUI() {
+    document.querySelectorAll("[data-managing-tab]").forEach(btn => {
         btn.classList.toggle("active", btn.dataset.managingTab === currentManagingTab);
     });
     document.getElementById("managing-emails-panel")?.classList.toggle("hidden", currentManagingTab !== "emails");
     document.getElementById("managing-tactics-panel")?.classList.toggle("hidden", currentManagingTab !== "tactics");
+}
 
-    const emailsRoot = document.getElementById("managing-emails-root");
-    if (emailsRoot) tournamentsModule.renderManagingEmails(emailsRoot);
-
-    updateManagingBadges();
+function renderManagingView() {
+    const root = document.getElementById("managing-emails-root");
+    if (root && typeof tournamentsModule.renderManagingEmails === "function") {
+        tournamentsModule.renderManagingEmails(root);
+    }
 }
 
 function updateManagingBadges() {
-    const count = tournamentsModule.getPendingInviteCountForCurrentUser();
-    const sidebarBadge = document.getElementById("managing-unread-badge");
-    const tabBadge = document.getElementById("managing-tab-email-badge");
+    const count = typeof tournamentsModule.getPendingInviteCountForCurrentUser === "function"
+        ? tournamentsModule.getPendingInviteCountForCurrentUser()
+        : 0;
 
-    [sidebarBadge, tabBadge].forEach(el => {
+    const sideBadge = document.getElementById("managing-unread-badge");
+    const tabBadge = document.getElementById("managing-tab-email-badge");
+    [sideBadge, tabBadge].forEach(el => {
         if (!el) return;
-        el.textContent = String(count);
-        el.classList.toggle("hidden", count <= 0);
+        if (count > 0) {
+            el.textContent = String(count);
+            el.classList.remove("hidden");
+        } else {
+            el.classList.add("hidden");
+        }
     });
 }
 
@@ -978,12 +998,12 @@ function renderForumMessages() {
     container.innerHTML = messagesCache.map(m => {
         const isOwn = currentUser && m.uid === currentUser.uid;
         const msgDate = m.date || (m.createdAt ? new Date(m.createdAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "");
-        const timestamp = msgDate ? `${msgDate} · ${m.time || ""}` : (m.time || "");
+        const timeStr = msgDate ? `${msgDate} · ${m.time || ""}` : (m.time || "");
         return `
             <div class="chat-msg ${isOwn ? "own-msg" : ""}">
                 <div class="chat-msg-header">
                     <span class="chat-author ${m.role === "admin" ? "admin-badge" : ""}">${escapeHTML(m.author)}${m.role === "admin" ? " [ADMIN]" : ""}</span>
-                    <span class="chat-time">${escapeHTML(timestamp)}</span>
+                    <span class="chat-time">${escapeHTML(timeStr)}</span>
                     ${admin ? `<button type="button" class="btn btn-danger btn-small" style="margin-left:auto; padding:1px 6px;" data-action="delete-msg" data-id="${escapeHTML(m.id)}">×</button>` : ""}
                 </div>
                 <div class="chat-text">${escapeHTML(m.text)}</div>
