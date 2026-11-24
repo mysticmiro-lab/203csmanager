@@ -360,9 +360,30 @@
                     <div class="input-group"><label for="te-prize-58">5.–8. Platz je ($)</label><input type="number" id="te-prize-58" min="0" placeholder="25000"></div>
                 </div>
 
+                <!-- 4. LÄNDERBEGRENZUNG (MIT FLAGGEN & KONTINENT-FILTER) -->
                 <div class="input-group">
-                    <label for="te-allowed-countries">Länderbegrenzung (optional, kommagetrennt – Mehrheit / min. 3 Spieler aus diesen Ländern)</label>
-                    <input type="text" id="te-allowed-countries" placeholder="z. B. Deutschland, Österreich, Schweiz (leer = alle Länder erlaubt)">
+                    <label>Länderbegrenzung (optional – leer lassen für alle Länder; Mehrheit / min. 3 Spieler aus gewählten Ländern)</label>
+                    <div id="te-country-picker" class="te-country-picker">
+                        <div class="te-country-summary-row">
+                            <span id="te-country-summary" class="te-country-summary">Alle Länder erlaubt (keine Einschränkung)</span>
+                            <button type="button" id="te-country-clear-all" class="btn btn-danger btn-small hidden">🧹 Alle abwählen</button>
+                        </div>
+                        <div id="te-continent-tabs" class="te-continent-tabs">
+                            <button type="button" class="te-continent-btn active" data-continent="all">🌍 Alle</button>
+                            <button type="button" class="te-continent-btn" data-continent="europa">🇪🇺 Europa</button>
+                            <button type="button" class="te-continent-btn" data-continent="nordamerika">🌎 Nordamerika</button>
+                            <button type="button" class="te-continent-btn" data-continent="suedamerika">🌎 Südamerika</button>
+                            <button type="button" class="te-continent-btn" data-continent="asien">🌏 Asien</button>
+                            <button type="button" class="te-continent-btn" data-continent="ozeanien">🌏 Ozeanien</button>
+                            <button type="button" class="te-continent-btn" data-continent="afrika">🌍 Afrika</button>
+                        </div>
+                        <div class="te-country-controls">
+                            <input type="text" id="te-country-search" placeholder="Land suchen..." autocomplete="off">
+                            <button type="button" id="te-country-select-visible" class="btn btn-secondary btn-small">✅ Alle sichtbaren auswählen</button>
+                            <button type="button" id="te-country-deselect-visible" class="btn btn-secondary btn-small">❌ Sichtbare abwählen</button>
+                        </div>
+                        <div id="te-country-list" class="te-country-grid"></div>
+                    </div>
                 </div>
 
                 <div class="input-group"><label for="te-location-notice">Hinweis 1 (z. B. Standort-Pflicht / Info, optional)</label><textarea id="te-location-notice" rows="2" placeholder="z. B. Dein Team muss sich in Europa befinden..."></textarea></div>
