@@ -16,7 +16,13 @@ export function createTournamentsModule(deps) {
         onTitleChange
     } = deps;
 
+    const MIN_CALENDAR_MONTH = "2025-01";
+
     let activeCategory = "laufend";
+    let overviewViewMode = "list"; // "list" | "calendar"
+    let calendarMonth = "";
+    let lastSyncedGameMonth = "";
+
     let activeTournamentId = null;
     let activeSubTab = "";
     let selectedVrsDate = "";
@@ -31,6 +37,36 @@ export function createTournamentsModule(deps) {
         europe: { label: "UTC+1", offsetFromBase: 0 },
         americas: { label: "UTC-5", offsetFromBase: -6 },
         asia: { label: "UTC+8", offsetFromBase: 7 }
+    };
+
+    const COUNTRY_ALIASES = {
+        de: "deutschland", ger: "deutschland", deu: "deutschland", germany: "deutschland", deutschland: "deutschland",
+        at: "österreich", aut: "österreich", austria: "österreich", oesterreich: "österreich", österreich: "österreich",
+        ch: "schweiz", sui: "schweiz", che: "schweiz", switzerland: "schweiz", schweiz: "schweiz",
+        fr: "frankreich", fra: "frankreich", france: "frankreich", frankreich: "frankreich",
+        nl: "niederlande", ned: "niederlande", nld: "niederlande", netherlands: "niederlande", holland: "niederlande", niederlande: "niederlande",
+        be: "belgien", bel: "belgien", belgium: "belgien", belgien: "belgien",
+        lu: "luxemburg", lux: "luxemburg", luxembourg: "luxemburg", luxemburg: "luxemburg",
+        dk: "dänemark", den: "dänemark", dnk: "dänemark", denmark: "dänemark", daenemark: "dänemark", dänemark: "dänemark",
+        se: "schweden", swe: "schweden", sweden: "schweden", schweden: "schweden",
+        no: "norwegen", nor: "norwegen", norway: "norwegen", norwegen: "norwegen",
+        fi: "finnland", fin: "finnland", finland: "finnland", finnland: "finnland",
+        pl: "polen", pol: "polen", poland: "polen", polen: "polen",
+        cz: "tschechien", cze: "tschechien", czechia: "tschechien", tschechien: "tschechien",
+        uk: "großbritannien", gb: "großbritannien", gbr: "großbritannien", england: "großbritannien", "united kingdom": "großbritannien", großbritannien: "großbritannien", grossbritannien: "großbritannien",
+        es: "spanien", esp: "spanien", spain: "spanien", spanien: "spanien",
+        pt: "portugal", por: "portugal", prt: "portugal", portugal: "portugal",
+        it: "italien", ita: "italien", italy: "italien", italien: "italien",
+        ru: "russland", rus: "russland", russia: "russland", russland: "russland",
+        ua: "ukraine", ukr: "ukraine", ukraine: "ukraine",
+        tr: "türkei", tur: "türkei", turkey: "türkei", tuerkei: "türkei", türkei: "türkei",
+        us: "usa", usa: "usa", "united states": "usa",
+        ca: "kanada", can: "kanada", canada: "kanada", kanada: "kanada",
+        br: "brasilien", bra: "brasilien", brazil: "brasilien", brasilien: "brasilien",
+        ar: "argentinien", arg: "argentinien", argentina: "argentinien", argentinien: "argentinien",
+        au: "australien", aus: "australien", australia: "australien", australien: "australien",
+        cn: "china", chn: "china", china: "china",
+        mn: "mongolei", mgl: "mongolei", mongolia: "mongolei", mongolei: "mongolei"
     };
 
     const esc = (str) => {
@@ -67,6 +103,19 @@ export function createTournamentsModule(deps) {
         return { dateISO: outDate, timeStr: outTime, tzLabel: tz.label };
     };
 
+    const convertToBaseTimezone = (localDateISO, localTimeStr, tzKey) => {
+        const tz = TIMEZONES[tzKey] || TIMEZONES.europe;
+        if (!localDateISO || !localTimeStr || !/^\d{2}:\d{2}$/.test(localTimeStr)) {
+            return { dateISO: localDateISO, timeStr: localTimeStr };
+        }
+        const [y, m, d] = localDateISO.split("-").map(Number);
+        const [hh, mm] = localTimeStr.split(":").map(Number);
+        const shifted = new Date(Date.UTC(y, m - 1, d, hh - tz.offsetFromBase, mm));
+        const outDate = `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
+        const outTime = `${String(shifted.getUTCHours()).padStart(2, "0")}:${String(shifted.getUTCMinutes()).padStart(2, "0")}`;
+        return { dateISO: outDate, timeStr: outTime };
+    };
+
     const tryParseGermanOrIsoDate = (text) => {
         const s = String(text || "").trim();
         if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
@@ -88,6 +137,74 @@ export function createTournamentsModule(deps) {
     const getTournamentById = (id) => getTournamentsCache().find(t => t.id === id) || null;
     const isAdmin = () => getCurrentUser()?.role === "admin";
     const currentGameDate = () => getGameDate?.() || "2025-01-01";
+
+    function getGameMonth() {
+        const gd = currentGameDate();
+        const ym = /^\d{4}-\d{2}/.test(gd) ? gd.slice(0, 7) : MIN_CALENDAR_MONTH;
+        return ym < MIN_CALENDAR_MONTH ? MIN_CALENDAR_MONTH : ym;
+    }
+
+    function syncCalendarMonthWithGameDate() {
+        const gm = getGameMonth();
+        if (gm !== lastSyncedGameMonth) {
+            lastSyncedGameMonth = gm;
+            calendarMonth = gm;
+        }
+        if (!calendarMonth || calendarMonth < MIN_CALENDAR_MONTH) {
+            calendarMonth = gm;
+        }
+    }
+
+    function shiftCalendarMonth(ym, delta) {
+        const [y, m] = (ym || MIN_CALENDAR_MONTH).split("-").map(Number);
+        const dt = new Date(Date.UTC(y, m - 1 + delta, 1));
+        const nextYm = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}`;
+        return nextYm < MIN_CALENDAR_MONTH ? MIN_CALENDAR_MONTH : nextYm;
+    }
+
+    function formatMonthYearDE(ym) {
+        const [y, m] = (ym || MIN_CALENDAR_MONTH).split("-").map(Number);
+        const dt = new Date(Date.UTC(y, m - 1, 1));
+        return dt.toLocaleDateString("de-DE", { month: "long", year: "numeric", timeZone: "UTC" });
+    }
+
+    function normalizeCountryName(raw) {
+        const s = String(raw || "").trim().toLowerCase();
+        if (!s) return "";
+        return COUNTRY_ALIASES[s] || s;
+    }
+
+    function parseAllowedCountries(raw) {
+        if (Array.isArray(raw)) {
+            return raw.map(s => String(s || "").trim()).filter(Boolean);
+        }
+        return String(raw || "")
+            .split(/[,;]+/)
+            .map(s => s.trim())
+            .filter(Boolean);
+    }
+
+    function doesPlayerTeamMeetCountryRule(player, allowedCountries) {
+        if (!Array.isArray(allowedCountries) || allowedCountries.length === 0) {
+            return { allowed: true, matchingCount: 0, checked: false };
+        }
+        const rosterSource = (Array.isArray(player?.lineup) && player.lineup.length)
+            ? player.lineup
+            : (Array.isArray(player?.roster) ? player.roster : []);
+        const withCountry = rosterSource.filter(p => p && typeof p === "object" && (p.country || p.land || p.nationality || p.nation));
+
+        // Solange noch keine Profis mit Länderinfo im Kader existieren, blockiert die Prüfung noch nicht
+        if (withCountry.length === 0) {
+            return { allowed: true, matchingCount: 0, checked: false, pendingRoster: true };
+        }
+
+        const allowedSet = new Set(allowedCountries.map(normalizeCountryName).filter(Boolean));
+        const matchingCount = withCountry
+            .slice(0, 5)
+            .filter(p => allowedSet.has(normalizeCountryName(p.country || p.land || p.nationality || p.nation)))
+            .length;
+        return { allowed: matchingCount >= 3, matchingCount, checked: true };
+    }
 
     function getTournamentDateBounds(t) {
         const dates = [];
@@ -117,6 +234,12 @@ export function createTournamentsModule(deps) {
         const start = /^\d{4}-\d{2}-\d{2}$/.test(t.startDate || "") ? t.startDate : (dates[0] || "2025-01-01");
         const end = /^\d{4}-\d{2}-\d{2}$/.test(t.endDate || "") ? t.endDate : (dates[dates.length - 1] || start);
         return { start, end: end < start ? start : end };
+    }
+
+    function getTournamentRevealDate(t) {
+        const start = getTournamentDateBounds(t).start;
+        const isOq = Boolean(t.playoffType === "open_qualifier" || t.isOpenQualifier);
+        return addDaysISO(start, isOq ? -1 : -7);
     }
 
     function getEffectiveStatus(t) {
@@ -506,7 +629,6 @@ export function createTournamentsModule(deps) {
         }
         return { id: groupId, name: `Gruppe ${groupId}`, size, advanceCount, rounds, nextOffset: dayOffset + (n - 1) };
     }
-
     function buildTournamentFromModularConfig(cfg) {
         const startDate = cfg.startDate || "2025-02-01";
         const defaultFormat = cfg.defaultFormat || "BO3";
@@ -533,6 +655,7 @@ export function createTournamentsModule(deps) {
         const oqQualifierCount = isOpenQualifier
             ? Math.min(Math.max(1, Number(cfg.oqQualifierCount) || 4), Math.floor(playoffSize / 2))
             : 0;
+        const allowedCountries = parseAllowedCountries(cfg.allowedCountries);
 
         let currentDayOffset = 0;
         let swissGroups = [];
@@ -658,6 +781,7 @@ export function createTournamentsModule(deps) {
             statusMode: statusInput === "auto" ? "auto" : "manual",
             status: statusInput,
             useAutoInvites: cfg.useAutoInvites !== false,
+            allowedCountries,
             startDate,
             endDate,
             matchesPerDay,
@@ -873,8 +997,9 @@ export function createTournamentsModule(deps) {
 
             const startDates = comp.map(x => getTournamentDateBounds(x).start).sort();
             const chainStartDate = startDates[0] || "2025-01-01";
-            const regStart = addDaysISO(chainStartDate, -14);
-            const regEnd = addDaysISO(chainStartDate, -7);
+            const revealDates = comp.map(x => getTournamentRevealDate(x)).sort();
+            const regEnd = revealDates[0] || addDaysISO(chainStartDate, -7);
+            const regStart = addDaysISO(regEnd, -14); // 2 Wochen Anmeldephase
             const phase = gDate < regStart ? "before" : (gDate < regEnd ? "open" : "closed");
 
             const tiers = [];
@@ -933,6 +1058,7 @@ export function createTournamentsModule(deps) {
                 const resp = getPlayerResponseForChain(p, compIds, chainRootId);
                 const entry = {
                     playerUid: p.uid,
+                    rawPlayer: p,
                     uid: `player:${p.uid}`,
                     username: p.username,
                     name: getTeamName(p),
@@ -961,8 +1087,13 @@ export function createTournamentsModule(deps) {
                 const emptyCount = Math.max(0, tier.capacity - cappedBase.length);
                 const hurdles = [...Array(emptyCount).fill(-1), ...cappedBase.map(b => b.livePoints)].slice(0, tier.capacity);
 
-                const m = findMaxQualifyingPlayers(remaining, hurdles);
-                const chosen = remaining.slice(0, m);
+                const tierEligible = remaining.filter(c =>
+                    doesPlayerTeamMeetCountryRule(c.rawPlayer, tier.tournament.allowedCountries).allowed
+                );
+
+                const m = findMaxQualifyingPlayers(tierEligible, hurdles);
+                const chosen = tierEligible.slice(0, m);
+                const chosenUids = new Set(chosen.map(c => c.playerUid));
                 const displaceCount = Math.max(0, m - emptyCount);
                 const displacedBase = cappedBase.slice(0, displaceCount);
                 const displacedSet = new Set(displacedBase.map(d => d.uid));
@@ -971,6 +1102,7 @@ export function createTournamentsModule(deps) {
                     ...tier,
                     hurdles,
                     emptyCount,
+                    eligibleCandidates: tierEligible,
                     invitedPlayers: chosen,
                     displacedBase,
                     displacedBaseUids: displacedSet
@@ -986,10 +1118,9 @@ export function createTournamentsModule(deps) {
                 }
                 tierResultsByTournament.get(tier.tournament.id)[tier.tierKey] = evalObj;
 
-                remaining = remaining.slice(m);
+                remaining = remaining.filter(c => !chosenUids.has(c.playerUid));
             });
 
-            // Auch wenn ein Spieler in der geschlossenen Phase gar nicht akzeptiert hat, ermitteln ob er eigentlich eingeladen worden wäre (für Abgelaufen-E-Mail)
             const circuitObj = {
                 chainRootId,
                 rootName: rootT.name,
@@ -1008,7 +1139,6 @@ export function createTournamentsModule(deps) {
             circuits.push(circuitObj);
             comp.forEach(m => tournamentToCircuit.set(m.id, circuitObj));
 
-            // E-Mails pro Spieler aufbauen
             if (phase !== "before" && tiers.length > 0) {
                 players.forEach(p => {
                     if (manualPlayerUidsInChain.has(p.uid)) return;
@@ -1069,7 +1199,6 @@ export function createTournamentsModule(deps) {
                                     : `Die Anmeldefrist (${formatDateDE(addDaysISO(regEnd, -1))}) für ${assignedTier.tierLabel} ist abgelaufen, ohne dass die Einladung bestätigt wurde.`)
                         });
                     } else if (resp?.status === "accepted") {
-                        // Spieler hatte angenommen, wurde aber während der Anmeldephase von punktstärkeren Teams verdrängt!
                         list.push({
                             id: `mail-${chainRootId}-${p.uid}`,
                             chainRootId,
@@ -1087,10 +1216,9 @@ export function createTournamentsModule(deps) {
                             body: `Andere Spielerteams mit höherem VRS-Ranking haben sich angemeldet. Dein aktuelles VRS-Ranking (${myPts} Punkte) reicht leider nicht mehr für einen Startplatz im Verbund „${rootT.name}“ aus.`
                         });
                     } else if (phase === "closed" && expiredPendingPlayers.some(ep => ep.playerUid === p.uid)) {
-                        // Prüfen, ob er theoretisch mit seinen Punkten während der offenen Phase eingeladen gewesen wäre
                         const lowestTier = tierEvaluations[tierEvaluations.length - 1];
-                        if (lowestTier) {
-                            const others = activeCandidates.filter(c => c.playerUid !== p.uid);
+                        if (lowestTier && doesPlayerTeamMeetCountryRule(p, lowestTier.tournament.allowedCountries).allowed) {
+                            const others = lowestTier.eligibleCandidates.filter(c => c.playerUid !== p.uid);
                             const needed = computeMinPointsNeededForTier(others, lowestTier.hurdles);
                             if (needed !== null && myPts >= needed) {
                                 list.push({
@@ -1132,17 +1260,34 @@ export function createTournamentsModule(deps) {
         }
         visited.add(tournament.id);
 
+        const gDate = currentGameDate();
+        const hideSpoilers = !isAdmin();
+        const revealDate = getTournamentRevealDate(tournament);
+        const matchSchedules = tournament.matchSchedules || {};
+
+        if (hideSpoilers && gDate < revealDate) {
+            return {
+                participants: [],
+                autoSlots: [],
+                matchSlots: {},
+                matchWinners: {},
+                matchSchedules,
+                defaultWins: {},
+                swissStandings: {},
+                rrStandings: {},
+                stageAdvancers: [],
+                r32Winners: []
+            };
+        }
+
         const invData = inviteCache || computeAllCircuitsInviteData();
         const circuit = invData.tournamentToCircuit.get(tournament.id) || null;
         const tTiers = invData.tierResultsByTournament.get(tournament.id) || {};
         const vrsLookup = invData.vrsLookup;
 
-        const hideSpoilers = !isAdmin();
-        const gDate = currentGameDate();
         const rawManual = Array.isArray(tournament.participants) ? tournament.participants : [];
         const matchesMap = tournament.matches || {};
         const winnersMap = tournament.winners || {};
-        const matchSchedules = tournament.matchSchedules || {};
         const defaultWins = tournament.defaultWins || {};
 
         let predGraph = null;
@@ -1155,7 +1300,6 @@ export function createTournamentsModule(deps) {
         const participants = [];
         const seen = new Set();
 
-        // 1. Effektive Basis-Teilnehmer + VRS-Verdrängung anwenden (sobald Anmeldephase vorbei ist, oder für Admin nach Anmeldeschluss)
         const applyDynamicDisplacement = Boolean(
             tournament.useAutoInvites !== false &&
             !tournament.invitesBaked &&
@@ -1186,7 +1330,6 @@ export function createTournamentsModule(deps) {
             });
         }
 
-        // Qualifikanten aus Vorgängerturnier
         if (tournament.qualifiedFrom && predGraph) {
             const predAdv = predGraph.stageAdvancers || [];
             (tournament.qualifiedFrom.slots || []).forEach((slot, idx) => {
@@ -1201,7 +1344,6 @@ export function createTournamentsModule(deps) {
             });
         }
 
-        // Manuelle / VRS Basis-Teilnehmer minus verdrängte Teams + bestätigte Einladungen
         const keptManual = rawManual.filter(p => !displacedAll.has(p.uid));
         const livePts = (p) => {
             if (p.type === "player") {
@@ -1216,7 +1358,6 @@ export function createTournamentsModule(deps) {
 
         const combinedDirect = [...keptManual, ...extraAcceptedPlayers];
         if (applyDynamicDisplacement && extraAcceptedPlayers.length > 0) {
-            // Nach VRS-Punkten absteigend sortieren (innerhalb gleicher slotGroup), damit verschobene Teams exakt nachrücken
             const groupOrder = (p) => (p.slotGroup === "playoffs_direct" ? 1 : 0);
             combinedDirect.sort((a, b) => groupOrder(a) - groupOrder(b) || livePts(b) - livePts(a));
         }
@@ -1292,7 +1433,6 @@ export function createTournamentsModule(deps) {
         const rrStandings = {};
         const stageAdvancers = [];
 
-        // 1. Swiss
         const stage1Pool = getStage1ParticipantsRaw(tournament, participants);
         (tournament.swissGroups || []).forEach((g, gIdx) => {
             const gTeams = stage1Pool.slice(gIdx * g.teamCount, (gIdx + 1) * g.teamCount);
@@ -1327,7 +1467,6 @@ export function createTournamentsModule(deps) {
             sorted.filter(row => row.wins >= g.winsToAdvance).forEach(row => stageAdvancers.push(row.uid));
         });
 
-        // 2. GSL
         (tournament.deGroups || []).forEach(g => {
             g.matches.forEach(m => resolveMatch(m));
             (g.qualifierMatchIds || []).forEach(qId => {
@@ -1335,7 +1474,6 @@ export function createTournamentsModule(deps) {
             });
         });
 
-        // 3. Round-Robin
         (tournament.rrGroups || []).forEach((g, gIdx) => {
             const gTeams = stage1Pool.slice(gIdx * g.size, (gIdx + 1) * g.size);
             const table = {};
@@ -1354,7 +1492,6 @@ export function createTournamentsModule(deps) {
             sorted.slice(0, g.advanceCount || 2).forEach(row => { if (row.played > 0) stageAdvancers.push(row.uid); });
         });
 
-        // 4. Play-In
         if (tournament.playInStage) {
             tournament.playInStage.rounds.forEach(r => r.days.forEach(d => d.matches.forEach(m => resolveMatch(m, [], true, d.dateISO || ""))));
             (tournament.playInStage.qualifierMatchIds || []).forEach(qId => {
@@ -1362,7 +1499,6 @@ export function createTournamentsModule(deps) {
             });
         }
 
-        // 5. Playoffs / Quali32 / Open Qualifier
         const roundsList = tournament.rounds || [];
         roundsList.forEach(r => {
             r.days.forEach(d => d.matches.forEach(m => {
@@ -1375,7 +1511,6 @@ export function createTournamentsModule(deps) {
 
         const r32Winners = Array.from(r32WinnerSet);
 
-        // 6. Qualifikanten für Folge-Turniere sammeln
         if (tournament.isDoubleElimQuali && tournament.deQualiMeta?.qualifierMatchIds) {
             tournament.deQualiMeta.qualifierMatchIds.forEach(qId => {
                 if (matchWinners[qId]) stageAdvancers.push(matchWinners[qId]);
@@ -1452,7 +1587,8 @@ export function createTournamentsModule(deps) {
 
     function getTournamentVisibilityInfo(t, invData = null) {
         const bounds = getTournamentDateBounds(t);
-        const revealDate = addDaysISO(bounds.start, -7);
+        const isOq = Boolean(t.playoffType === "open_qualifier" || t.isOpenQualifier);
+        const revealDate = getTournamentRevealDate(t);
         const gDate = currentGameDate();
         const canSeeLineupAndBracket = isAdmin() || gDate >= revealDate;
 
@@ -1462,61 +1598,70 @@ export function createTournamentsModule(deps) {
         let myLowRankNotice = null;
         let myHigherTierNotice = null;
         let myInvitedNotice = null;
+        let myCountryBlockedNotice = null;
 
-        if (!isAdmin() && user?.role === "player" && circuit && !canSeeLineupAndBracket && t.useAutoInvites !== false) {
+        if (!isAdmin() && user?.role === "player") {
             const myPlayer = getPlayers().find(p => p.uid === user.uid);
             const myPts = Number(myPlayer?.points) || 0;
-            const compIds = new Set(circuit.members.map(m => m.id));
-            const resp = myPlayer ? getPlayerResponseForChain(myPlayer, compIds, circuit.chainRootId) : null;
-            const assigned = circuit.playerTierAssignment.get(user.uid) || null;
+            const countryCheck = myPlayer ? doesPlayerTeamMeetCountryRule(myPlayer, t.allowedCountries) : { allowed: true };
 
-            if (circuit.phase === "open") {
-                if (resp?.status === "declined") {
-                    myHigherTierNotice = "Du hast die Einladung für diesen Turnier-Verbund abgelehnt.";
-                } else if (assigned) {
-                    if (assigned.tournament.id === t.id) {
-                        myInvitedNotice = resp?.status === "accepted"
-                            ? `Dein Team ist für „${assigned.shortLabel}“ bestätigt.`
-                            : `Dein Team hat eine offene Turnier-Einladung für „${assigned.shortLabel}“ im Postfach (Managing → E-Mails)!`;
-                    } else {
-                        const tLevel = circuit.members.findIndex(m => m.id === t.id);
-                        const aLevel = circuit.members.findIndex(m => m.id === assigned.tournament.id);
-                        if (aLevel >= 0 && aLevel < tLevel) {
-                            myHigherTierNotice = `Dein Team (${myPts} Pkt.) ist durch das VRS-Ranking bereits für ein höheres Turnier im Verbund (${assigned.tournament.name}) eingeladen!`;
+            if (countryCheck.checked && !countryCheck.allowed) {
+                myCountryBlockedNotice = `Dein Kader erfüllt die Länderbegrenzung nicht (${countryCheck.matchingCount} von mindestens 3 Spielern aus: ${(t.allowedCountries || []).join(", ")}).`;
+            } else if (circuit && !canSeeLineupAndBracket && t.useAutoInvites !== false) {
+                const compIds = new Set(circuit.members.map(m => m.id));
+                const resp = myPlayer ? getPlayerResponseForChain(myPlayer, compIds, circuit.chainRootId) : null;
+                const assigned = circuit.playerTierAssignment.get(user.uid) || null;
+
+                if (circuit.phase === "open") {
+                    if (resp?.status === "declined") {
+                        myHigherTierNotice = "Du hast die Einladung für diesen Turnier-Verbund abgelehnt.";
+                    } else if (assigned) {
+                        if (assigned.tournament.id === t.id) {
+                            myInvitedNotice = resp?.status === "accepted"
+                                ? `Dein Team ist für „${assigned.shortLabel}“ bestätigt.`
+                                : `Dein Team hat eine offene Turnier-Einladung für „${assigned.shortLabel}“ im Postfach (Managing → E-Mails)!`;
                         } else {
-                            const tTiers = Object.values(data.tierResultsByTournament.get(t.id) || {});
-                            const lowestTTier = tTiers[tTiers.length - 1];
-                            if (lowestTTier) {
-                                const others = circuit.activeCandidates.filter(c => c.playerUid !== user.uid);
-                                const needed = computeMinPointsNeededForTier(others, lowestTTier.hurdles);
-                                myLowRankNotice = needed !== null
-                                    ? `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist zu niedrig, um sich direkt für dieses Turnier anzumelden (aktuell mindestens ${needed} Pkt. erforderlich).`
-                                    : `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist für dieses Turnier zu niedrig.`;
+                            const tLevel = circuit.members.findIndex(m => m.id === t.id);
+                            const aLevel = circuit.members.findIndex(m => m.id === assigned.tournament.id);
+                            if (aLevel >= 0 && aLevel < tLevel) {
+                                myHigherTierNotice = `Dein Team (${myPts} Pkt.) ist durch das VRS-Ranking bereits für ein höheres Turnier im Verbund (${assigned.tournament.name}) eingeladen!`;
+                            } else {
+                                const tTiers = Object.values(data.tierResultsByTournament.get(t.id) || {});
+                                const lowestTTier = tTiers[tTiers.length - 1];
+                                if (lowestTTier) {
+                                    const others = (lowestTTier.eligibleCandidates || []).filter(c => c.playerUid !== user.uid);
+                                    const needed = computeMinPointsNeededForTier(others, lowestTTier.hurdles);
+                                    myLowRankNotice = needed !== null
+                                        ? `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist zu niedrig, um sich direkt für dieses Turnier anzumelden (aktuell mindestens ${needed} Pkt. erforderlich).`
+                                        : `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist für dieses Turnier zu niedrig.`;
+                                }
                             }
                         }
-                    }
-                } else {
-                    const tTiers = Object.values(data.tierResultsByTournament.get(t.id) || {});
-                    const lowestTTier = tTiers[tTiers.length - 1];
-                    if (lowestTTier) {
-                        const others = circuit.activeCandidates.filter(c => c.playerUid !== user.uid);
-                        const needed = computeMinPointsNeededForTier(others, lowestTTier.hurdles);
-                        myLowRankNotice = needed !== null
-                            ? `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist zu niedrig, um sich für dieses Turnier anzumelden (aktuell mindestens ${needed} Pkt. erforderlich).`
-                            : `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist zu niedrig, um sich für dieses Turnier anzumelden.`;
+                    } else {
+                        const tTiers = Object.values(data.tierResultsByTournament.get(t.id) || {});
+                        const lowestTTier = tTiers[tTiers.length - 1];
+                        if (lowestTTier) {
+                            const others = (lowestTTier.eligibleCandidates || []).filter(c => c.playerUid !== user.uid);
+                            const needed = computeMinPointsNeededForTier(others, lowestTTier.hurdles);
+                            myLowRankNotice = needed !== null
+                                ? `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist zu niedrig, um sich für dieses Turnier anzumelden (aktuell mindestens ${needed} Pkt. erforderlich).`
+                                : `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist zu niedrig, um sich für dieses Turnier anzumelden.`;
+                        }
                     }
                 }
             }
         }
 
         return {
+            isOq,
             canSeeLineupAndBracket,
             revealDate,
             bounds,
             circuit,
             myLowRankNotice,
             myHigherTierNotice,
-            myInvitedNotice
+            myInvitedNotice,
+            myCountryBlockedNotice
         };
     }
 
@@ -1653,20 +1798,16 @@ export function createTournamentsModule(deps) {
 
         let scheduleMarkup = "";
         if (admin) {
-            const previewHtml = (tzKey !== "europe" && matchTime)
-                ? `<div class="match-tz-preview">${esc(conv.tzLabel)}: ${esc(formatDateDE(conv.dateISO))} · ${esc(conv.timeStr)}</div>`
-                : "";
+            const shownDate = conv.timeStr ? conv.dateISO : matchDateISO;
+            const shownTime = conv.timeStr || "";
             scheduleMarkup = `
-                <div style="display:flex; flex-direction:column; align-items:flex-end;">
-                    <div class="match-admin-schedule">
-                        <input type="date" class="match-date-input" data-action="set-match-date" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" value="${esc(matchDateISO)}" title="Spieldatum (Basis: Europa UTC+1)">
-                        <input type="time" class="match-time-input" data-action="set-match-time" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" value="${esc(matchTime)}" title="Spielzeit (Basis: Europa UTC+1)">
-                    </div>
-                    ${previewHtml}
+                <div class="match-admin-schedule">
+                    <input type="date" class="match-date-input" data-action="set-match-date" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" value="${esc(shownDate)}" title="Spieldatum (${esc(conv.tzLabel)})">
+                    <input type="time" class="match-time-input" data-action="set-match-time" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" value="${esc(shownTime)}" title="Startzeit (${esc(conv.tzLabel)})">
                 </div>
             `;
         } else {
-            const displayDate = (sched.date || (matchTime && tzKey !== "europe"))
+            const displayDate = (conv.timeStr || sched.date)
                 ? formatDateDE(conv.dateISO)
                 : (dayEdited && defaultDateLabel ? defaultDateLabel : (conv.dateISO ? formatDateDE(conv.dateISO) : defaultDateLabel));
             const timePart = conv.timeStr ? ` · ${esc(conv.timeStr)} (${esc(conv.tzLabel)})` : "";
@@ -1876,7 +2017,9 @@ export function createTournamentsModule(deps) {
         const matchTime = sched.time || match.time || "";
         const tzKey = getTimezone?.() || "europe";
         const conv = convertFromBaseTimezone(matchDateISO, matchTime, tzKey);
-        const timeBadge = conv.timeStr ? `${conv.timeStr}` : dayDateLabel;
+        const timeBadge = conv.timeStr
+            ? `${formatDateDE(conv.dateISO)} · ${conv.timeStr} (${conv.tzLabel})`
+            : (conv.dateISO ? formatDateDE(conv.dateISO) : dayDateLabel);
 
         const renderSlot = (slotIdx) => {
             const uid = slots[slotIdx];
@@ -1917,7 +2060,7 @@ export function createTournamentsModule(deps) {
         if (rounds.length === 0) return "";
         const size = Number(t.playoffSize) || 64;
         const r0Matches = rounds[0]?.days?.flatMap(d => d.matches) || [];
-        const sliceMatchCount = 32; // 32 R1-Matches = 64er Ast
+        const sliceMatchCount = 32;
         const numSlices = r0Matches.length > sliceMatchCount ? Math.ceil(r0Matches.length / sliceMatchCount) : 1;
 
         let sectionTabsHtml = "";
@@ -1934,7 +2077,6 @@ export function createTournamentsModule(deps) {
             activeOqSection = "all";
         }
 
-        // Welche Runden & Match-Indizes werden im gewählten Ausschnitt angezeigt?
         let visibleRounds = rounds.map((r, rIdx) => ({
             r,
             rIdx,
@@ -2085,7 +2227,7 @@ export function createTournamentsModule(deps) {
                         <div class="ranking-table-wrap" style="margin-top:10px;">
                             <table class="ranking-table stage-table">
                                 <thead><tr><th>#</th><th>Team</th><th>Bilanz (S-N)</th><th>Status</th></tr></thead>
-                                <tbody>${standingRows || `<tr><td colspan="4" class="muted">Noch keine Teams zugewiesen.</td></tr>`}</tbody>
+                                <tbody>${standingRows || `<tr><td colspan="4" class="muted">Noch keine Teams sichtbar bzw. zugewiesen.</td></tr>`}</tbody>
                             </table>
                         </div>
                     </details>
@@ -2221,7 +2363,7 @@ export function createTournamentsModule(deps) {
                     <div class="ranking-table-wrap" style="margin:10px 0 14px;">
                         <table class="ranking-table stage-table">
                             <thead><tr><th>#</th><th>Team</th><th>Sp.</th><th>S</th><th>N</th><th>Pkt</th><th>Status</th></tr></thead>
-                            <tbody>${standingRows || `<tr><td colspan="7" class="muted">Noch keine Teams zugewiesen.</td></tr>`}</tbody>
+                            <tbody>${standingRows || `<tr><td colspan="7" class="muted">Noch keine Teams sichtbar bzw. zugewiesen.</td></tr>`}</tbody>
                         </table>
                     </div>
                     <div class="round-days-grid">${roundsHtml}</div>
@@ -2323,7 +2465,12 @@ export function createTournamentsModule(deps) {
         return filtered.map(e => `<option value="${esc(e.uid)}" ${existing.has(e.uid) ? "disabled" : ""}>#${e.rank} ${esc(e.name)} (${e.points} Pkt${e.region ? ` · ${esc(e.region)}` : ""})${existing.has(e.uid) ? " ✓" : ""}</option>`).join("");
     }
 
-    function renderParticipantsTab(t, graph, admin, invData = null) {
+    function renderParticipantsTab(t, graph, admin, invData = null, visInfo = null) {
+        if (!admin && visInfo && !visInfo.canSeeLineupAndBracket) {
+            const windowTxt = visInfo.isOq ? "1 Tag" : "1 Woche";
+            return `<div class="placeholder-box"><span>🔒 Die Teilnehmerliste wird ab ${esc(formatDateDE(visInfo.revealDate))} (${windowTxt} vor Turnierbeginn) angezeigt.</span></div>`;
+        }
+
         const parts = graph.participants;
         const manual = Array.isArray(t.participants) ? t.participants : [];
         const existing = new Set(parts.map(p => p.uid));
@@ -2460,9 +2607,7 @@ export function createTournamentsModule(deps) {
         const parts = graph.participants;
 
         const subTabs = [];
-        if (t.hasStage1) {
-            subTabs.push({ id: "stage1", label: "📊 Gruppenphase" });
-        }
+        if (t.hasStage1) subTabs.push({ id: "stage1", label: "📊 Gruppenphase" });
         if (t.hasPlayIn) subTabs.push({ id: "playin", label: "⚡ Play-In" });
         if (t.hasPlayoffs) {
             subTabs.push({ id: "bracket", label: "🌳 Turnierbaum" });
@@ -2471,23 +2616,27 @@ export function createTournamentsModule(deps) {
                 (t.rounds || []).forEach(r => subTabs.push({ id: r.id, label: `${r.name} (${r.defaultFormat || "BO3"})` }));
             }
         }
-        const partCountLabel = visInfo.canSeeLineupAndBracket ? `(${parts.length}/${t.maxTeams})` : `(max. ${t.maxTeams})`;
-        subTabs.push({ id: "participants", label: `👥 Teilnehmer ${partCountLabel}` });
+        const partTabLabel = visInfo.canSeeLineupAndBracket ? `👥 Teilnehmer (${parts.length}/${t.maxTeams})` : "👥 Teilnehmer";
+        subTabs.push({ id: "participants", label: partTabLabel });
 
         if (!activeSubTab || !subTabs.some(st => st.id === activeSubTab)) activeSubTab = subTabs[0]?.id || "participants";
 
-        let body = "";
+        let lockNoticesHtml = "";
         if (!visInfo.canSeeLineupAndBracket) {
             const c = visInfo.circuit;
             const regEndDisplay = c ? formatDateDE(addDaysISO(c.regEnd, -1)) : "";
+            const revealWindowTxt = visInfo.isOq ? "1 Tag" : "1 Woche";
             let regBlock = "";
             if (t.useAutoInvites !== false && c) {
                 if (c.phase === "before") {
-                    regBlock = `<div class="tournament-notice info"><strong>⏳ Anmelde- &amp; Einladungsphase startet am ${esc(formatDateDE(c.regStart))}</strong><span>Die Einladungen der Turnierorganisatoren werden ab dem ${esc(formatDateDE(c.regStart))} per E-Mail unter <strong>Managing → E-Mails</strong> versendet.</span></div>`;
+                    regBlock = `<div class="tournament-notice info"><strong>⏳ Anmelde- &amp; Einladungsphase startet am ${esc(formatDateDE(c.regStart))}</strong><span>Die 2-wöchige Einladungsphase startet am ${esc(formatDateDE(c.regStart))} über dein Postfach unter <strong>Managing → E-Mails</strong>.</span></div>`;
                 } else if (c.phase === "open") {
                     regBlock = `<div class="tournament-notice info"><strong>📧 Einladungs- &amp; Anmeldephase aktiv (bis ${esc(regEndDisplay)})</strong><span>Die Anmeldung wird über E-Mail-Anfragen der Turnierorganisatoren unter <strong>Managing → E-Mails</strong> geregelt.</span></div>`;
                 }
             }
+            const countryBlockedBlock = visInfo.myCountryBlockedNotice
+                ? `<div class="tournament-notice danger"><strong>🚫 Länderbegrenzung nicht erfüllt</strong><span>${esc(visInfo.myCountryBlockedNotice)}</span></div>`
+                : "";
             const lowRankBlock = visInfo.myLowRankNotice
                 ? `<div class="tournament-notice danger"><strong>⚠️ Ranking zu niedrig</strong><span>${esc(visInfo.myLowRankNotice)}</span></div>`
                 : "";
@@ -2498,34 +2647,36 @@ export function createTournamentsModule(deps) {
                 ? `<div class="tournament-notice warning"><strong>📧 Einladung im Postfach</strong><span>${esc(visInfo.myInvitedNotice)}</span></div>`
                 : "";
 
-            body = `
+            lockNoticesHtml = `
                 <div class="tournament-notices">
                     <div class="tournament-notice warning">
                         <strong>🔒 Teilnehmer &amp; Paarungen noch verborgen</strong>
-                        <span>Welche Teams am Turnier teilnehmen und wie die Paarungen aussehen, wird ab 1 Woche vor Turnierbeginn (${esc(formatDateDE(visInfo.revealDate))}) sichtbar.</span>
+                        <span>Welche Teams am Turnier teilnehmen und wie die Paarungen aussehen, wird ab ${revealWindowTxt} vor Turnierbeginn (${esc(formatDateDE(visInfo.revealDate))}) sichtbar. Die Turnierstruktur sowie vorläufige Spieltermine sind bereits einsehbar.</span>
                     </div>
                     ${regBlock}
                     ${invitedBlock}
                     ${higherBlock}
+                    ${countryBlockedBlock}
                     ${lowRankBlock}
                 </div>
             `;
+        }
+
+        let body = "";
+        if (activeSubTab === "stage1") {
+            body = t.stage1Type === "swiss" ? renderSwissTab(t, graph, admin) : (t.stage1Type === "gsl" ? renderGslTab(t, graph, admin) : renderRoundRobinTab(t, graph, admin));
+        } else if (activeSubTab === "playin") {
+            body = renderPlayInTab(t, graph, admin);
+        } else if (activeSubTab === "bracket") {
+            if (t.playoffType === "open_qualifier" || t.isOpenQualifier) body = renderOpenQualifierBracket(t, graph, admin);
+            else if (t.isQuali32) body = renderQuali32Bracket(t, graph, admin);
+            else if (t.isDoubleElimQuali) body = renderDoubleElimQualiBracket(t, graph, admin);
+            else body = renderPlayoffsBracket(t, graph, admin);
+        } else if (activeSubTab === "participants") {
+            body = renderParticipantsTab(t, graph, admin, invData, visInfo);
         } else {
-            if (activeSubTab === "stage1") {
-                body = t.stage1Type === "swiss" ? renderSwissTab(t, graph, admin) : (t.stage1Type === "gsl" ? renderGslTab(t, graph, admin) : renderRoundRobinTab(t, graph, admin));
-            } else if (activeSubTab === "playin") {
-                body = renderPlayInTab(t, graph, admin);
-            } else if (activeSubTab === "bracket") {
-                if (t.playoffType === "open_qualifier" || t.isOpenQualifier) body = renderOpenQualifierBracket(t, graph, admin);
-                else if (t.isQuali32) body = renderQuali32Bracket(t, graph, admin);
-                else if (t.isDoubleElimQuali) body = renderDoubleElimQualiBracket(t, graph, admin);
-                else body = renderPlayoffsBracket(t, graph, admin);
-            } else if (activeSubTab === "participants") {
-                body = renderParticipantsTab(t, graph, admin, invData);
-            } else {
-                const rIdx = (t.rounds || []).findIndex(r => r.id === activeSubTab);
-                body = rIdx >= 0 ? renderRoundTab(t, t.rounds[rIdx], graph, admin, rIdx) : "";
-            }
+            const rIdx = (t.rounds || []).findIndex(r => r.id === activeSubTab);
+            body = rIdx >= 0 ? renderRoundTab(t, t.rounds[rIdx], graph, admin, rIdx) : "";
         }
 
         const selMode = t.statusMode === "manual" ? t.status : "auto";
@@ -2542,6 +2693,10 @@ export function createTournamentsModule(deps) {
                 <button type="button" class="btn btn-danger btn-small" data-action="delete-tournament" data-tournament-id="${esc(t.id)}">🗑️</button>
             </div>
         ` : "";
+
+        const countryNoticeHtml = Array.isArray(t.allowedCountries) && t.allowedCountries.length > 0
+            ? `<div class="tournament-notice info"><strong>🌍 Länderbegrenzung aktiv</strong><span>An diesem Turnier dürfen nur Teams teilnehmen, deren Kader mehrheitlich (mindestens 3 Spieler) aus folgendem Land / folgenden Ländern stammt: <strong>${esc(t.allowedCountries.join(", "))}</strong>.</span></div>`
+            : "";
 
         const noticesHtml = (t.notices || []).map(n => `
             <div class="tournament-notice ${esc(n.type)}">
@@ -2567,28 +2722,147 @@ export function createTournamentsModule(deps) {
                     <div class="stat-box"><span class="stat-label">Match-Format</span><span class="stat-value">${esc(t.matchFormatSummary)}</span></div>
                     ${t.prizePoolTotal ? `<div class="stat-box"><span class="stat-label">Gesamtpreispool</span><span class="stat-value" style="color:var(--accent-orange);">${Number(t.prizePoolTotal).toLocaleString("de-DE")} $</span></div>` : (t.travelWindow ? `<div class="stat-box"><span class="stat-label">Anreise bei Weiterkommen</span><span class="stat-value">${esc(t.travelWindow)}</span></div>` : "")}
                     ${t.lanLocation ? `<div class="stat-box"><span class="stat-label">LAN Finals</span><span class="stat-value">${esc(t.lanDates ? `${t.lanDates} · ` : "")}${esc(t.lanLocation)}</span></div>` : ""}
-                    <div class="stat-box"><span class="stat-label">Teilnehmer</span><span class="stat-value">${visInfo.canSeeLineupAndBracket ? `${parts.length} / ${t.maxTeams} Teams` : `Max. ${t.maxTeams} Teams (ab ${formatDateDE(visInfo.revealDate)} sichtbar)`}</span></div>
+                    ${visInfo.canSeeLineupAndBracket ? `<div class="stat-box"><span class="stat-label">Teilnehmer</span><span class="stat-value">${parts.length} / ${t.maxTeams} Teams</span></div>` : ""}
                 </div>
-                ${visInfo.canSeeLineupAndBracket ? renderPrizePoolBox(t, graph) : ""}
-                ${noticesHtml ? `<div class="tournament-notices">${noticesHtml}</div>` : ""}
-                ${visInfo.canSeeLineupAndBracket ? `
-                    <div class="tournament-subtabs" role="tablist">
-                        ${subTabs.map(st => `<button type="button" class="tournament-subtab ${activeSubTab === st.id ? "active" : ""}" data-action="switch-subtab" data-subtab="${esc(st.id)}">${esc(st.label)}</button>`).join("")}
-                    </div>
-                ` : ""}
+                ${renderPrizePoolBox(t, graph)}
+                ${(countryNoticeHtml || noticesHtml) ? `<div class="tournament-notices">${countryNoticeHtml}${noticesHtml}</div>` : ""}
+                ${lockNoticesHtml}
+                <div class="tournament-subtabs" role="tablist">
+                    ${subTabs.map(st => `<button type="button" class="tournament-subtab ${activeSubTab === st.id ? "active" : ""}" data-action="switch-subtab" data-subtab="${esc(st.id)}">${esc(st.label)}</button>`).join("")}
+                </div>
                 <div>${body}</div>
+            </div>
+        `;
+    }
+
+    // ==================== KALENDER-ÜBERSICHT (AB JANUAR 2025) ====================
+    function renderTournamentCalendar(sortedList) {
+        syncCalendarMonthWithGameDate();
+        const gDate = currentGameDate();
+        const [year, monthNum] = calendarMonth.split("-").map(Number);
+        const monthIdx = monthNum - 1;
+        const firstDay = new Date(Date.UTC(year, monthIdx, 1));
+        const daysInMonth = new Date(Date.UTC(year, monthIdx + 1, 0)).getUTCDate();
+        const startOffset = (firstDay.getUTCDay() + 6) % 7; // Mo = 0 .. So = 6
+        const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7;
+
+        const cells = [];
+        for (let i = 0; i < totalCells; i++) {
+            const dt = new Date(Date.UTC(year, monthIdx, 1 - startOffset + i));
+            const iso = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+            cells.push({
+                iso,
+                dayNum: dt.getUTCDate(),
+                inMonth: dt.getUTCMonth() === monthIdx
+            });
+        }
+
+        const weeks = [];
+        for (let i = 0; i < cells.length; i += 7) {
+            weeks.push(cells.slice(i, i + 7));
+        }
+
+        const withBounds = sortedList.map(t => ({ t, bounds: getTournamentDateBounds(t), status: getEffectiveStatus(t) }));
+
+        const weekRowsHtml = weeks.map(week => {
+            const wStart = week[0].iso;
+            const wEnd = week[6].iso;
+            const overlapping = withBounds
+                .filter(item => item.bounds.start <= wEnd && item.bounds.end >= wStart)
+                .sort((a, b) => a.bounds.start.localeCompare(b.bounds.start) || b.bounds.end.localeCompare(a.bounds.end) || a.t.name.localeCompare(b.t.name, "de"));
+
+            // Lanes pro Woche vergeben, sodass sich überlappende Turnierbalken sauber untereinander stapeln
+            const lanes = [];
+            overlapping.forEach(item => {
+                const startCol = Math.max(0, week.findIndex(d => d.iso >= item.bounds.start));
+                const endCol = item.bounds.end >= wEnd ? 6 : week.findIndex(d => d.iso === item.bounds.end);
+                const effEndCol = endCol === -1 ? 6 : endCol;
+
+                let laneIdx = lanes.findIndex(lastEnd => lastEnd < startCol);
+                if (laneIdx === -1) {
+                    laneIdx = lanes.length;
+                    lanes.push(-1);
+                }
+                lanes[laneIdx] = effEndCol;
+                item._lane = laneIdx;
+            });
+
+            const laneCount = lanes.length;
+            const dayCellsHtml = week.map((d, col) => {
+                const isToday = d.iso === gDate;
+                const cellCls = `${!d.inMonth ? "is-other-month" : ""} ${isToday ? "is-today" : ""}`.trim();
+
+                const laneSlotsHtml = Array.from({ length: laneCount }, (_, lIdx) => {
+                    const hit = overlapping.find(it => it._lane === lIdx && d.iso >= it.bounds.start && d.iso <= it.bounds.end);
+                    if (!hit) return `<div class="cal-event-spacer"></div>`;
+                    const isStart = d.iso === hit.bounds.start;
+                    const isEnd = d.iso === hit.bounds.end;
+                    const showLabel = isStart || col === 0;
+                    const cls = `cal-event cal-status-${hit.status} ${isStart ? "is-start" : ""} ${isEnd ? "is-end" : ""}`.trim();
+                    const title = `${hit.t.name} (${hit.t.onlineDates})`;
+                    return `<button type="button" class="${cls}" data-action="open-tournament" data-tournament-id="${esc(hit.t.id)}" title="${esc(title)}">${showLabel ? `🏅 ${esc(hit.t.name)}` : "&nbsp;"}</button>`;
+                }).join("");
+
+                return `
+                    <div class="calendar-day-cell ${cellCls}">
+                        <div class="cal-day-header">
+                            <span class="cal-day-num">${d.dayNum}</span>
+                            ${isToday ? `<span class="cal-today-tag">Heute</span>` : ""}
+                        </div>
+                        <div class="cal-lanes">${laneSlotsHtml}</div>
+                    </div>
+                `;
+            }).join("");
+
+            return `<div class="calendar-week-row">${dayCellsHtml}</div>`;
+        }).join("");
+
+        const isMinMonth = calendarMonth <= MIN_CALENDAR_MONTH;
+        return `
+            <div class="calendar-toolbar">
+                <div class="calendar-nav">
+                    <button type="button" class="btn btn-secondary btn-small" data-action="cal-prev-month" ${isMinMonth ? "disabled" : ""}>◀ Vorheriger Monat</button>
+                    <div class="calendar-month-title">${esc(formatMonthYearDE(calendarMonth))}</div>
+                    <button type="button" class="btn btn-secondary btn-small" data-action="cal-next-month">Nächster Monat ▶</button>
+                    <button type="button" class="btn btn-secondary btn-small" data-action="cal-today" title="Zum aktuellen Spieldatum springen">📅 Spieldatum</button>
+                </div>
+                <div class="calendar-legend">
+                    <span class="cal-leg-item"><span class="cal-leg-dot laufend"></span> Laufend</span>
+                    <span class="cal-leg-item"><span class="cal-leg-dot zukuenftig"></span> Zukünftig</span>
+                    <span class="cal-leg-item"><span class="cal-leg-dot vergangen"></span> Vergangen</span>
+                    <span class="cal-leg-item"><span class="cal-leg-dot today"></span> Spieldatum</span>
+                </div>
+            </div>
+            <div class="calendar-scroll">
+                <div class="calendar-board">
+                    <div class="calendar-weekdays">
+                        <div class="calendar-weekday">Mo</div>
+                        <div class="calendar-weekday">Di</div>
+                        <div class="calendar-weekday">Mi</div>
+                        <div class="calendar-weekday">Do</div>
+                        <div class="calendar-weekday">Fr</div>
+                        <div class="calendar-weekday">Sa</div>
+                        <div class="calendar-weekday">So</div>
+                    </div>
+                    ${weekRowsHtml}
+                </div>
             </div>
         `;
     }
 
     function renderTournamentOverview() {
         const admin = isAdmin();
-        const list = getTournamentsCache();
+        const sortedList = [...getTournamentsCache()].sort((a, b) => {
+            const ba = getTournamentDateBounds(a);
+            const bb = getTournamentDateBounds(b);
+            return ba.start.localeCompare(bb.start) || ba.end.localeCompare(bb.end) || String(a.name || "").localeCompare(String(b.name || ""), "de");
+        });
+
         const invData = computeAllCircuitsInviteData();
         const counts = { laufend: 0, zukuenftig: 0, vergangen: 0 };
         const grouped = { laufend: [], zukuenftig: [], vergangen: [] };
 
-        list.forEach(t => {
+        sortedList.forEach(t => {
             const st = getEffectiveStatus(t);
             counts[st]++;
             grouped[st].push(t);
@@ -2600,7 +2874,8 @@ export function createTournamentsModule(deps) {
                 const badge = formatCategoryBadge(getEffectiveStatus(t));
                 const visInfo = getTournamentVisibilityInfo(t, invData);
                 const graph = visInfo.canSeeLineupAndBracket ? resolveTournamentGraph(t, new Set(), invData) : null;
-                const teamCountTxt = visInfo.canSeeLineupAndBracket ? `${graph.participants.length} / ${t.maxTeams} Teams` : `Max. ${t.maxTeams} Teams`;
+                const teamCountTxt = visInfo.canSeeLineupAndBracket ? `${graph.participants.length} / ${t.maxTeams} Teams` : `${t.maxTeams} Teams`;
+                const countriesTxt = Array.isArray(t.allowedCountries) && t.allowedCountries.length > 0 ? `<span>🌍 Nur: ${esc(t.allowedCountries.join(", "))}</span>` : "";
                 return `
                     <div class="tournament-card">
                         <div class="tournament-card-top">
@@ -2615,7 +2890,8 @@ export function createTournamentsModule(deps) {
                             ${t.lanLocation ? `<span>✈️ LAN Finals: ${esc(t.lanDates)} (${esc(t.lanLocation)})</span>` : ""}
                             <span>🎮 Format: ${esc(t.matchFormatSummary)}</span>
                             <span>👥 ${esc(teamCountTxt)}</span>
-                            <span>🌍 ${esc(t.inviteSummary)}</span>
+                            <span>📌 ${esc(t.inviteSummary)}</span>
+                            ${countriesTxt}
                         </div>
                         <div class="tournament-card-foot">
                             <span data-action="open-tournament" data-tournament-id="${esc(t.id)}" style="cursor:pointer;">Turnierdetails ansehen →</span>
@@ -2635,18 +2911,30 @@ export function createTournamentsModule(deps) {
             </div>
         ` : "";
 
-        return `
-            <div class="card">
-                <div class="tournament-overview-head">
-                    <div><h2>Turnierübersicht</h2><p class="muted-text" style="margin-bottom:0;">Wähle zwischen aktuell laufenden, zukünftigen und vergangenen Turnieren.</p></div>
-                    ${adminActions}
-                </div>
+        const viewContent = overviewViewMode === "calendar"
+            ? renderTournamentCalendar(sortedList)
+            : `
                 <div class="tournament-tabs" role="tablist">
                     <button type="button" class="tournament-tab ${activeCategory === "laufend" ? "active" : ""}" data-tournament-tab="laufend">🔴 Aktuell laufend <span class="tournament-tab-count">${counts.laufend}</span></button>
                     <button type="button" class="tournament-tab ${activeCategory === "zukuenftig" ? "active" : ""}" data-tournament-tab="zukuenftig">🗓️ Zukünftig <span class="tournament-tab-count">${counts.zukuenftig}</span></button>
                     <button type="button" class="tournament-tab ${activeCategory === "vergangen" ? "active" : ""}" data-tournament-tab="vergangen">🏁 Vergangen <span class="tournament-tab-count">${counts.vergangen}</span></button>
                 </div>
                 ${cardsHtml}
+            `;
+
+        return `
+            <div class="card">
+                <div class="tournament-overview-head">
+                    <div><h2>Turnierübersicht</h2><p class="muted-text" style="margin-bottom:0;">Sortiert nach Startdatum · wähle zwischen Listen- und Kalender-Übersicht.</p></div>
+                    ${adminActions}
+                </div>
+                <div class="overview-controls-row">
+                    <div class="overview-mode-switch">
+                        <button type="button" class="overview-mode-btn ${overviewViewMode === "list" ? "active" : ""}" data-action="set-overview-mode" data-mode="list">📋 Listen-Ansicht</button>
+                        <button type="button" class="overview-mode-btn ${overviewViewMode === "calendar" ? "active" : ""}" data-action="set-overview-mode" data-mode="calendar">📅 Kalender-Ansicht</button>
+                    </div>
+                </div>
+                ${viewContent}
             </div>
         `;
     }
@@ -2779,7 +3067,7 @@ export function createTournamentsModule(deps) {
             .sort((a, b) => (b.canRespond ? 1 : 0) - (a.canRespond ? 1 : 0));
 
         if (!emails.length) {
-            containerEl.innerHTML = `<div class="placeholder-box"><span>Dein Postfach ist aktuell leer. Sobald ein Turnier-Verbund in die Einladungsphase startet und dein VRS-Ranking (${myPts.toLocaleString("de-DE")} Pkt.) ausreicht, erhältst du hier Anfragen der Turnierorganisatoren.</span></div>`;
+            containerEl.innerHTML = `<div class="placeholder-box"><span>Dein Postfach ist aktuell leer. Sobald ein Turnier-Verbund in die 2-wöchige Einladungsphase startet und dein VRS-Ranking (${myPts.toLocaleString("de-DE")} Pkt.) ausreicht, erhältst du hier Anfragen der Turnierorganisatoren.</span></div>`;
             return;
         }
 
@@ -2878,6 +3166,7 @@ export function createTournamentsModule(deps) {
             setVal("te-name", isDuplicate ? `${existing.name} (Kopie)` : existing.name);
             setVal("te-status", existing.statusMode === "manual" ? existing.status : "auto");
             setCheck("te-use-auto-invites", existing.useAutoInvites !== false);
+            setVal("te-allowed-countries", Array.isArray(existing.allowedCountries) ? existing.allowedCountries.join(", ") : "");
             setVal("te-start-date", existing.startDate || "2025-02-01");
             setVal("te-end-date", existing.endDate || "");
             setVal("te-matches-per-day", existing.matchesPerDay || 4);
@@ -2952,6 +3241,7 @@ export function createTournamentsModule(deps) {
                 name: getVal("te-name"),
                 status: getVal("te-status", "auto"),
                 useAutoInvites: getCheck("te-use-auto-invites"),
+                allowedCountries: getVal("te-allowed-countries"),
                 startDate: getVal("te-start-date", "2025-02-01"),
                 endDate: getVal("te-end-date"),
                 matchesPerDay: getVal("te-matches-per-day", "4"),
@@ -3003,9 +3293,40 @@ export function createTournamentsModule(deps) {
         });
     }
 
-    // ==================== INTERAKTIONEN (ADMIN, E-MAILS & SLOT-PICKER) ====================
+    function findMatchInTournament(tourObj, matchId) {
+        for (const r of (tourObj.rounds || [])) {
+            for (const d of (r.days || [])) {
+                const m = (d.matches || []).find(x => x.id === matchId);
+                if (m) return m;
+            }
+        }
+        for (const g of (tourObj.swissGroups || [])) {
+            for (const r of (g.rounds || [])) {
+                const m = (r.matches || []).find(x => x.id === matchId);
+                if (m) return m;
+            }
+        }
+        for (const g of (tourObj.deGroups || [])) {
+            const m = (g.matches || []).find(x => x.id === matchId);
+            if (m) return m;
+        }
+        for (const g of (tourObj.rrGroups || [])) {
+            for (const r of (g.rounds || [])) {
+                const m = (r.matches || []).find(x => x.id === matchId);
+                if (m) return m;
+            }
+        }
+        for (const r of (tourObj.playInStage?.rounds || [])) {
+            for (const d of (r.days || [])) {
+                const m = (d.matches || []).find(x => x.id === matchId);
+                if (m) return m;
+            }
+        }
+        return null;
+    }
+
+    // ==================== INTERAKTIONEN (ADMIN, E-MAILS & KALENDER) ====================
     function setupEvents() {
-        // Managing E-Mail Postfach Aktionen
         document.getElementById("managing-emails-root")?.addEventListener("click", async (e) => {
             const btn = e.target.closest("[data-email-action]");
             if (!btn) return;
@@ -3044,7 +3365,6 @@ export function createTournamentsModule(deps) {
             }
         });
 
-        // Geteiltes Open-Qualifier Slot-Picker Modal
         const oqModal = document.getElementById("oq-slot-picker-modal");
         document.getElementById("oq-sp-close")?.addEventListener("click", closeOqSlotPicker);
         oqModal?.addEventListener("click", (e) => { if (e.target === oqModal) closeOqSlotPicker(); });
@@ -3088,6 +3408,26 @@ export function createTournamentsModule(deps) {
             if (!el) return;
             const action = el.dataset.action;
 
+            if (action === "set-overview-mode") {
+                overviewViewMode = el.dataset.mode === "calendar" ? "calendar" : "list";
+                render();
+                return;
+            }
+            if (action === "cal-prev-month") {
+                calendarMonth = shiftCalendarMonth(calendarMonth || getGameMonth(), -1);
+                render();
+                return;
+            }
+            if (action === "cal-next-month") {
+                calendarMonth = shiftCalendarMonth(calendarMonth || getGameMonth(), 1);
+                render();
+                return;
+            }
+            if (action === "cal-today") {
+                calendarMonth = getGameMonth();
+                render();
+                return;
+            }
             if (action === "open-tournament") { openTournament(el.dataset.tournamentId); return; }
             if (action === "back-to-overview") { activeTournamentId = null; render(); return; }
             if (action === "switch-subtab") { activeSubTab = el.dataset.subtab; render(); return; }
@@ -3149,6 +3489,11 @@ export function createTournamentsModule(deps) {
                 const pUid = document.getElementById("tournament-player-select")?.value;
                 const player = getPlayers().find(p => p.uid === pUid);
                 if (!player) { alert("Bitte wähle oben im Dropdown zuerst ein Spieler-Team aus!"); return; }
+                const cCheck = doesPlayerTeamMeetCountryRule(player, t.allowedCountries);
+                if (cCheck.checked && !cCheck.allowed) {
+                    alert(`Dieses Spielerteam erfüllt die Länderbegrenzung nicht (${cCheck.matchingCount} von mindestens 3 Spielern aus: ${(t.allowedCountries || []).join(", ")}).`);
+                    return;
+                }
                 const newUid = `player:${player.uid}`;
                 if (clone.participants.some(p => p.uid === newUid)) { alert("Dieses Spieler-Team ist bereits im Turnier!"); return; }
 
@@ -3237,6 +3582,11 @@ export function createTournamentsModule(deps) {
                 const pUid = document.getElementById("tournament-player-select")?.value;
                 const player = getPlayers().find(p => p.uid === pUid);
                 if (!player) return;
+                const cCheck = doesPlayerTeamMeetCountryRule(player, t.allowedCountries);
+                if (cCheck.checked && !cCheck.allowed) {
+                    alert(`Dieses Spielerteam erfüllt die Länderbegrenzung nicht (${cCheck.matchingCount} von mindestens 3 Spielern aus: ${(t.allowedCountries || []).join(", ")}).`);
+                    return;
+                }
                 const uid = `player:${player.uid}`;
                 if (graph.participants.some(p => p.uid === uid)) return;
                 clone.participants.push({
@@ -3318,15 +3668,21 @@ export function createTournamentsModule(deps) {
                 clone.participants = []; clone.matches = {}; clone.winners = {}; clone.defaultWins = {};
             } else if (action === "auto-schedule-times") {
                 const slots = ["12:00", "15:30", "18:30", "21:30", "10:00", "13:30", "17:00", "20:30"];
-                const assign = (list) => list.forEach((m, i) => {
+                const tzKey = getTimezone?.() || "europe";
+                const assign = (list, fallbackDate) => list.forEach((m, i) => {
+                    const baseD = clone.matchSchedules[m.id]?.date || m.defaultDateISO || fallbackDate || t.startDate || "2025-01-01";
+                    const conv = convertToBaseTimezone(baseD, slots[i % slots.length], tzKey);
                     clone.matchSchedules[m.id] = clone.matchSchedules[m.id] || {};
-                    clone.matchSchedules[m.id].time = slots[i % slots.length];
+                    clone.matchSchedules[m.id].time = conv.timeStr;
+                    if (conv.dateISO !== (m.defaultDateISO || baseD)) {
+                        clone.matchSchedules[m.id].date = conv.dateISO;
+                    }
                 });
-                (clone.rounds || []).forEach(r => (r.days || []).forEach(d => assign(d.matches)));
-                (clone.swissGroups || []).forEach(g => (g.rounds || []).forEach(r => assign(r.matches)));
+                (clone.rounds || []).forEach(r => (r.days || []).forEach(d => assign(d.matches, d.dateISO)));
+                (clone.swissGroups || []).forEach(g => (g.rounds || []).forEach(r => assign(r.matches, r.dateISO)));
                 (clone.deGroups || []).forEach(g => assign(g.matches));
-                (clone.rrGroups || []).forEach(g => (g.rounds || []).forEach(r => assign(r.matches)));
-                if (clone.playInStage) (clone.playInStage.rounds || []).forEach(r => (r.days || []).forEach(d => assign(d.matches)));
+                (clone.rrGroups || []).forEach(g => (g.rounds || []).forEach(r => assign(r.matches, r.dateISO)));
+                if (clone.playInStage) (clone.playInStage.rounds || []).forEach(r => (r.days || []).forEach(d => assign(d.matches, d.dateISO)));
             } else if (action === "autofill-first-round") {
                 const list = resolveTournamentGraph(t).participants;
                 const firstRound = t.rounds?.[0];
@@ -3513,11 +3869,37 @@ export function createTournamentsModule(deps) {
                 const clone = structuredClone(t);
                 clone.matchSchedules = clone.matchSchedules || {};
                 clone.matchSchedules[mId] = clone.matchSchedules[mId] || {};
-                if (val) clone.matchSchedules[mId][isDate ? "date" : "time"] = val;
-                else {
-                    delete clone.matchSchedules[mId][isDate ? "date" : "time"];
-                    if (!clone.matchSchedules[mId].date && !clone.matchSchedules[mId].time) delete clone.matchSchedules[mId];
+
+                const tzKey = getTimezone?.() || "europe";
+                const matchObj = findMatchInTournament(clone, mId);
+                const baseDate = clone.matchSchedules[mId].date || matchObj?.defaultDateISO || t.startDate || "2025-01-01";
+                const baseTime = clone.matchSchedules[mId].time || matchObj?.time || "";
+                const curConv = convertFromBaseTimezone(baseDate, baseTime, tzKey);
+
+                if (isDate) {
+                    if (!val) {
+                        delete clone.matchSchedules[mId].date;
+                    } else if (curConv.timeStr) {
+                        const back = convertToBaseTimezone(val, curConv.timeStr, tzKey);
+                        clone.matchSchedules[mId].date = back.dateISO;
+                        clone.matchSchedules[mId].time = back.timeStr;
+                    } else {
+                        clone.matchSchedules[mId].date = val;
+                    }
+                } else {
+                    if (!val) {
+                        delete clone.matchSchedules[mId].time;
+                    } else {
+                        const refLocalDate = curConv.dateISO || baseDate;
+                        const back = convertToBaseTimezone(refLocalDate, val, tzKey);
+                        clone.matchSchedules[mId].time = back.timeStr;
+                        if (back.dateISO !== (matchObj?.defaultDateISO || "") || clone.matchSchedules[mId].date) {
+                            clone.matchSchedules[mId].date = back.dateISO;
+                        }
+                    }
                 }
+
+                if (!clone.matchSchedules[mId].date && !clone.matchSchedules[mId].time) delete clone.matchSchedules[mId];
                 await saveTournamentDoc(clone);
             }
         });
