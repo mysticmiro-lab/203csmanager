@@ -39,6 +39,7 @@ const ADMIN_UID = "URaqNww1RjM87UWtqnFOS4zEaq13";
 const AUTH_EMAIL_DOMAIN = "hltvgame.local";
 const DEFAULT_GAME_DATE = "2025-01-01";
 const TZ_STORAGE_KEY = "hltv_game_timezone";
+const ONLINE_TIMEOUT_MS = 120000; // 2 Minuten ohne Heartbeat => Offline
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -74,6 +75,9 @@ let unsubscribers = [];
 let selectedTeamUid = null;
 let editingNewsId = null;
 
+let presenceHeartbeatTimer = null;
+let presenceUiTimer = null;
+
 // ==================== HILFSFUNKTIONEN ====================
 function escapeHTML(str) {
     const div = document.createElement("div");
@@ -103,6 +107,27 @@ function generateRandomPassword(length = 8) {
 
 function getTeamName(player) {
     return String(player.teamName || player.team_name || `Team ${player.username}`).trim();
+}
+
+function isPlayerOnline(player) {
+    return Boolean(player?.isOnline && player?.lastSeenAt && (Date.now() - Number(player.lastSeenAt)) < ONLINE_TIMEOUT_MS);
+}
+
+function formatLastSeen(ts) {
+    if (!ts) return "Noch nie online";
+    const dt = new Date(Number(ts));
+    if (Number.isNaN(dt.getTime())) return "Unbekannt";
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const msgDayStart = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+    const diffDays = Math.round((todayStart - msgDayStart) / 86400000);
+    const timeStr = dt.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+
+    if (diffDays === 0) return `Heute um ${timeStr} Uhr`;
+    if (diffDays === 1) return `Gestern um ${timeStr} Uhr`;
+    const dateStr = dt.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+    return `${dateStr}, ${timeStr} Uhr`;
 }
 
 function getVrsRankingsMap() {
@@ -154,6 +179,47 @@ function isTypingInTournamentFilter() {
     return id === "tournament-vrs-search" || id === "tournament-manual-team-name" || id === "tournament-vrs-offset-val";
 }
 
+// ==================== ONLINE-PRÄSENZ ====================
+async function sendPresencePing(online = true) {
+    if (currentUser?.role !== "player" || !auth.currentUser || auth.currentUser.uid !== currentUser.uid) return;
+    try {
+        await updateDoc(doc(db, "players", currentUser.uid), {
+            isOnline: Boolean(online),
+            lastSeenAt: Date.now()
+        });
+    } catch (_) {
+        // Ignorieren, falls Dokument entfernt wurde oder Tab gerade schließt
+    }
+}
+
+function stopPresenceTracking() {
+    if (presenceHeartbeatTimer) {
+        clearInterval(presenceHeartbeatTimer);
+        presenceHeartbeatTimer = null;
+    }
+    if (presenceUiTimer) {
+        clearInterval(presenceUiTimer);
+        presenceUiTimer = null;
+    }
+}
+
+function startPresenceTracking() {
+    stopPresenceTracking();
+    if (currentUser?.role === "player") {
+        sendPresencePing(true);
+        presenceHeartbeatTimer = setInterval(() => {
+            if (document.visibilityState !== "hidden") sendPresencePing(true);
+        }, 45000);
+    }
+    presenceUiTimer = setInterval(() => {
+        renderForumOnlineStatus();
+        renderTeamDirectory();
+        if (currentView === "team" && selectedTeamUid && document.activeElement?.id !== "rename-team-input") {
+            openTeamDetails(selectedTeamUid, false);
+        }
+    }, 30000);
+}
+
 // ==================== TURNIER-MODUL EINBINDEN ====================
 const tournamentsModule = createTournamentsModule({
     getCurrentUser: () => currentUser,
@@ -199,6 +265,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const tzSelect = document.getElementById("timezone-select");
     if (tzSelect) tzSelect.value = currentTimezone;
 
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && currentUser?.role === "player") {
+            sendPresencePing(true);
+        }
+    });
+
+    window.addEventListener("pagehide", () => {
+        if (currentUser?.role === "player") {
+            sendPresencePing(false);
+        }
+    });
+
     onAuthStateChanged(auth, async (fbUser) => {
         if (isSigningIn) return;
         if (!fbUser) {
@@ -217,6 +295,7 @@ function clearRealtimeListeners() {
 }
 
 function resetStateOnLogout() {
+    stopPresenceTracking();
     currentUser = null;
     playersCache = [];
     newsCache = [];
@@ -271,6 +350,7 @@ async function handleAuthenticatedUser(fbUser) {
     document.getElementById("auth-error")?.classList.add("hidden");
     showApp();
     startRealtimeListeners();
+    startPresenceTracking();
 }
 
 function startRealtimeListeners() {
@@ -308,11 +388,13 @@ function startRealtimeListeners() {
     unsubscribers.push(onSnapshot(query(collection(db, "players"), orderBy("createdAt", "asc")), async (snap) => {
         playersCache = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
         if (currentUser?.role === "player" && !playersCache.some(p => p.uid === currentUser.uid)) {
+            stopPresenceTracking();
             await signOut(auth);
             showAuthScreen("Dein Spielerkonto wurde vom Admin entfernt.");
             return;
         }
         renderAdminPlayerList();
+        renderForumOnlineStatus();
         renderTeamDirectory();
         if (currentView === "team" && selectedTeamUid && document.activeElement?.id !== "rename-team-input") {
             openTeamDetails(selectedTeamUid, false);
@@ -477,6 +559,10 @@ function showAuthError(msg) {
 async function logout() {
     closePasswordModal();
     tournamentsModule.closeEditor();
+    stopPresenceTracking();
+    if (currentUser?.role === "player") {
+        await sendPresencePing(false);
+    }
     await signOut(auth);
 }
 
@@ -497,6 +583,7 @@ function showApp() {
 
     renderGameDateUI();
     renderAdminPlayerList();
+    renderForumOnlineStatus();
     renderTeamDirectory();
     renderRanking();
     renderNews();
@@ -510,7 +597,6 @@ function showApp() {
 function setupAppEvents() {
     document.getElementById("logout-btn").addEventListener("click", logout);
 
-    // Globaler +1 Tag Button in Topbar & Kontrollen im Admin-Panel
     document.getElementById("btn-advance-day")?.addEventListener("click", () => {
         setGlobalGameDate(addDaysISO(globalSettings.gameDate, 1));
     });
@@ -525,7 +611,6 @@ function setupAppEvents() {
         if (val) setGlobalGameDate(val);
     });
 
-    // Zeitzonen-Umschalter (für alle Spieler)
     document.getElementById("timezone-select")?.addEventListener("change", (e) => {
         currentTimezone = e.target.value;
         localStorage.setItem(TZ_STORAGE_KEY, currentTimezone);
@@ -547,7 +632,6 @@ function setupAppEvents() {
         switchView(view);
     });
 
-    // Managing Tabs (E-Mails vs. Kader & Taktik)
     document.getElementById("view-managing")?.addEventListener("click", (e) => {
         const tabBtn = e.target.closest("[data-managing-tab]");
         if (!tabBtn) return;
@@ -555,7 +639,6 @@ function setupAppEvents() {
         syncManagingTabUI();
     });
 
-    // Admin: Neuen Spieler erstellen
     document.getElementById("add-player-form").addEventListener("submit", async (e) => {
         e.preventDefault();
         if (currentUser?.role !== "admin") return;
@@ -590,6 +673,8 @@ function setupAppEvents() {
                 status: "Aktiv",
                 roster: [],
                 tournamentResponses: {},
+                isOnline: false,
+                lastSeenAt: null,
                 createdAt: Date.now()
             });
 
@@ -609,7 +694,6 @@ function setupAppEvents() {
         }
     });
 
-    // Admin Spielerliste
     document.getElementById("admin-player-list").addEventListener("click", async (e) => {
         if (currentUser?.role !== "admin") return;
 
@@ -640,7 +724,6 @@ function setupAppEvents() {
         }
     });
 
-    // Forum-Chat (mit Datum + Uhrzeit)
     document.getElementById("chat-form").addEventListener("submit", async (e) => {
         e.preventDefault();
         const input = document.getElementById("chat-input");
@@ -659,6 +742,7 @@ function setupAppEvents() {
                 createdAt: Date.now()
             });
             input.value = "";
+            if (currentUser.role === "player") sendPresencePing(true);
         } catch (err) {
             alert(translateFirebaseError(err));
         } finally {
@@ -674,7 +758,6 @@ function setupAppEvents() {
         catch (err) { alert(translateFirebaseError(err)); }
     });
 
-    // News
     document.getElementById("news-form").addEventListener("submit", async (e) => {
         e.preventDefault();
         if (currentUser?.role !== "admin") return;
@@ -715,7 +798,6 @@ function setupAppEvents() {
         }
     });
 
-    // Teams & Umbenennen
     document.getElementById("team-directory-list")?.addEventListener("click", (e) => {
         const btn = e.target.closest("[data-team-open]");
         if (btn) openTeamDetails(btn.dataset.teamOpen);
@@ -822,7 +904,10 @@ function switchView(viewName) {
     document.querySelector(`#main-nav-list .nav-item[data-view="${viewName}"]`)?.classList.add("active");
     document.getElementById("view-title").textContent = VIEW_TITLES[viewName] || "Übersicht";
 
-    if (viewName === "forum") scrollChatToBottom();
+    if (viewName === "forum") {
+        renderForumOnlineStatus();
+        scrollChatToBottom();
+    }
     if (viewName === "turniere") tournamentsModule.render();
     if (viewName === "managing") {
         syncManagingTabUI();
@@ -864,6 +949,16 @@ function updateManagingBadges() {
     });
 }
 
+function renderForumOnlineStatus() {
+    const badge = document.getElementById("forum-online-badge");
+    const textEl = document.getElementById("forum-online-text");
+    if (!badge || !textEl) return;
+    const total = playersCache.length;
+    const online = playersCache.filter(isPlayerOnline).length;
+    textEl.textContent = `${online} von ${total} ${total === 1 ? "Spieler" : "Spielern"} online`;
+    badge.classList.toggle("none", online === 0);
+}
+
 function renderTeamDirectory() {
     const list = document.getElementById("team-directory-list");
     if (!list) return;
@@ -881,7 +976,11 @@ function renderTeamDirectory() {
         btn.type = "button";
         btn.className = "team-directory-item";
         btn.dataset.teamOpen = team.uid;
-        btn.innerHTML = `<span class="team-directory-icon">🛡️</span><span><strong>${escapeHTML(getTeamName(team))}</strong><small>Spielerteam · Manager: ${escapeHTML(team.username)}</small></span><span class="team-directory-arrow">›</span>`;
+        const online = isPlayerOnline(team);
+        const statusShort = online
+            ? "🟢 Gerade online"
+            : `⚫ ${team.lastSeenAt ? `Zuletzt: ${formatLastSeen(team.lastSeenAt)}` : "Noch nie online"}`;
+        btn.innerHTML = `<span class="team-directory-icon">🛡️</span><span><strong>${escapeHTML(getTeamName(team))}</strong><small>Manager: ${escapeHTML(team.username)} · ${escapeHTML(statusShort)}</small></span><span class="team-directory-arrow">›</span>`;
         li.append(btn);
         list.append(li);
     });
@@ -907,6 +1006,21 @@ function openTeamDetails(uid, switchTab = true) {
     document.getElementById("team-details")?.classList.remove("hidden");
     document.getElementById("team-view-name").textContent = name;
     document.getElementById("team-view-owner").textContent = `Spielerteam · Manager: ${team.username}`;
+
+    const online = isPlayerOnline(team);
+    const presenceText = online
+        ? "🟢 Gerade online"
+        : (team.lastSeenAt ? `⚫ Zuletzt online: ${formatLastSeen(team.lastSeenAt)}` : "⚫ Noch nie angemeldet");
+    const presencePill = document.getElementById("team-player-presence");
+    if (presencePill) {
+        presencePill.textContent = presenceText;
+        presencePill.className = `presence-pill ${online ? "online" : "offline"}`;
+    }
+
+    const statPresence = document.getElementById("team-stat-presence");
+    if (statPresence) {
+        statPresence.textContent = online ? "🟢 Gerade online" : formatLastSeen(team.lastSeenAt);
+    }
 
     const roster = Array.isArray(team.roster) ? team.roster : [];
     document.getElementById("team-stat-status").textContent = team.status || "Aktiv";
@@ -976,7 +1090,7 @@ function renderAdminPlayerList() {
             <div class="admin-player-info">
                 <strong>${escapeHTML(p.username)}</strong>
                 <span>(${escapeHTML(getTeamName(p))})</span>
-                <span class="password-changed-tag">🔒 Auth aktiv</span>
+                <span class="password-changed-tag">${isPlayerOnline(p) ? "🟢 Online" : "🔒 Auth aktiv"}</span>
             </div>
             <div class="admin-actions">
                 <input type="number" class="inline-points-input" data-role="player-points-input" min="0" value="${Number(p.points) || 0}" title="VRS-Punkte">
