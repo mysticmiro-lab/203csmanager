@@ -87,7 +87,25 @@
                     <div id="admin-news-creator" class="card hidden" style="margin-bottom:20px"><h3 id="news-form-heading">Neue HLTV-News veröffentlichen (Admin)</h3><form id="news-form" class="inline-stack-form"><input type="text" id="news-title-input" placeholder="Schlagzeile..." required><textarea id="news-body-input" rows="3" placeholder="Artikeltext..." required></textarea><div class="news-form-actions"><button type="submit" id="news-submit-btn" class="btn btn-accent">News posten</button><button type="button" id="news-cancel-edit-btn" class="btn btn-secondary hidden">Bearbeiten abbrechen</button></div></form></div>
                     <div id="news-feed" class="news-list"></div>
                 </section>
-                <section id="view-forum" class="view-section"><div class="card chat-card"><div class="chat-header"><div><h2>HLTV - Forum (Spieler-Chat)</h2><p class="muted-text">Globaler Live-Kanal für alle angemeldeten Spieler &amp; Admins</p></div></div><div id="chat-messages" class="chat-messages"></div><form id="chat-form" class="chat-input-area"><input type="text" id="chat-input" placeholder="Schreibe eine Nachricht ins Forum..." required maxlength="1000" autocomplete="off"><button type="submit" class="btn btn-primary">Senden</button></form></div></section>
+                <section id="view-forum" class="view-section">
+                    <div class="card chat-card">
+                        <div class="chat-header">
+                            <div>
+                                <h2>HLTV - Forum (Spieler-Chat)</h2>
+                                <p class="muted-text">Globaler Live-Kanal für alle angemeldeten Spieler &amp; Admins</p>
+                            </div>
+                            <div id="forum-online-badge" class="forum-online-pill" title="Aktuell verbundene Spieler">
+                                <span class="status-dot"></span>
+                                <span id="forum-online-text">0 von 0 Spielern online</span>
+                            </div>
+                        </div>
+                        <div id="chat-messages" class="chat-messages"></div>
+                        <form id="chat-form" class="chat-input-area">
+                            <input type="text" id="chat-input" placeholder="Schreibe eine Nachricht ins Forum..." required maxlength="1000" autocomplete="off">
+                            <button type="submit" class="btn btn-primary">Senden</button>
+                        </form>
+                    </div>
+                </section>
                 <section id="view-managing" class="view-section">
                     <div class="card">
                         <div class="managing-header">
@@ -116,7 +134,7 @@
                 <section id="view-transfermarkt" class="view-section"><div class="card"><h2>Transfermarkt</h2><p class="muted-text">Kaufe und verkaufe Spieler, um dein Team zu verstärken.</p><div class="placeholder-box"><span>🔄 Bereich in Vorbereitung – wird im nächsten Schritt ausgebaut.</span></div></div></section>
                 <section id="view-pack-opening" class="view-section"><div class="card"><h2>Pack Opening</h2><p class="muted-text">Öffne Spieler-Packs und ziehe neue Stars für deinen Kader.</p><div class="placeholder-box"><span>📦 Bereich in Vorbereitung – wird im nächsten Schritt ausgebaut.</span></div></div></section>
                 <section id="view-turniere" class="view-section"><div id="tournaments-root"></div></section>
-                <section id="view-team" class="view-section"><div class="card"><div id="team-directory"><h2>Meine Teams</h2><p class="muted-text">Wähle einen Teambereich aus, um die Teamübersicht zu öffnen.</p><ul id="team-directory-list" class="team-directory-list"></ul></div><div id="team-details" class="team-details-card hidden"><div class="team-header"><div class="team-badge" id="team-view-badge">🛡️</div><div><h2 id="team-view-name">Teamname</h2><p class="muted-text" id="team-view-owner">Manager: -</p></div><div id="team-manager-actions" class="team-manager-actions"></div></div><div class="team-details-grid"><div class="stat-box"><span class="stat-label">Status</span><span class="stat-value" id="team-stat-status">Aktiv</span></div><div class="stat-box"><span class="stat-label">Kadergröße</span><span class="stat-value" id="team-stat-squad">0 / 5 Spieler</span></div><div class="stat-box"><span class="stat-label">Budget</span><span class="stat-value" id="team-stat-budget">10.000 $</span></div><div class="stat-box"><span class="stat-label">VRS-Punkte</span><span class="stat-value" id="team-stat-points">0</span></div></div><div class="placeholder-box team-detail-roster" id="team-roster-panel" style="margin-top:20px"></div></div></div></section>
+                <section id="view-team" class="view-section"><div class="card"><div id="team-directory"><h2>Meine Teams</h2><p class="muted-text">Wähle einen Teambereich aus, um die Teamübersicht zu öffnen.</p><ul id="team-directory-list" class="team-directory-list"></ul></div><div id="team-details" class="team-details-card hidden"><div class="team-header"><div class="team-badge" id="team-view-badge">🛡️</div><div><h2 id="team-view-name">Teamname</h2><p class="muted-text" id="team-view-owner" style="margin-bottom:6px;">Manager: -</p><span id="team-player-presence" class="presence-pill offline">⚫ Offline</span></div><div id="team-manager-actions" class="team-manager-actions"></div></div><div class="team-details-grid"><div class="stat-box"><span class="stat-label">Team-Status</span><span class="stat-value" id="team-stat-status">Aktiv</span></div><div class="stat-box"><span class="stat-label">Spieler-Aktivität</span><span class="stat-value" id="team-stat-presence">-</span></div><div class="stat-box"><span class="stat-label">Kadergröße</span><span class="stat-value" id="team-stat-squad">0 / 5 Spieler</span></div><div class="stat-box"><span class="stat-label">Budget</span><span class="stat-value" id="team-stat-budget">10.000 $</span></div><div class="stat-box"><span class="stat-label">VRS-Punkte</span><span class="stat-value" id="team-stat-points">0</span></div></div><div class="placeholder-box team-detail-roster" id="team-roster-panel" style="margin-top:20px"></div></div></div></section>
                 <section id="view-ranking" class="view-section"><div class="card"><h2>🏆 Ranking</h2><p class="muted-text">Globales Weltranking aus offiziellen HLTV-/VRS-Teams und euren Spielerteams (live synchronisiert).</p><div id="ranking-content"></div></div></section>
                 <section id="view-admin-panel" class="view-section"><div class="admin-grid"><div class="card"><div class="card">
                     <h2>Spieldatum steuern</h2>
@@ -151,16 +169,7 @@
                         <input type="text" id="te-name" placeholder="z. B. IEM Katowice 2025" required>
                     </div>
                     <div class="input-group">
-                        <label for="te-status">Kategorie / Status</label>
-                        <select id="te-status">
-                            <option value="auto" selected>🔄 Automatisch nach Spieldatum</option>
-                            <option value="zukuenftig">🗓️ Manuell: Zukünftig</option>
-                            <option value="laufend">🔴 Manuell: Aktuell laufend</option>
-                            <option value="vergangen">🏁 Manuell: Vergangen</option>
-                        </select>
-                    </div>
-                    <div class="input-group">
-                        <label for="te-start-date">Startdatum (für Spieltage &amp; Sichtbarkeit) *</label>
+                        <label for="te-start-date">Startdatum (für Spieltage &amp; Auto-Status) *</label>
                         <input type="date" id="te-start-date" required>
                     </div>
                     <div class="input-group">
@@ -188,7 +197,7 @@
                         </select>
                     </div>
                     <div class="input-group">
-                        <label for="te-decider-format">Swiss Decider / Entscheidungs-Format</label>
+                        <label for="te-decider-format">Entscheidungsmatches-Format (Swiss / Open-Quali)</label>
                         <select id="te-decider-format">
                             <option value="BO1">Best of 1 (BO1)</option>
                             <option value="BO3" selected>Best of 3 (BO3)</option>
@@ -303,7 +312,7 @@
                                         <option value="single_elim" selected>Single Elimination (K.-o.-Baum)</option>
                                         <option value="double_elim">Double Elimination (Upper &amp; Lower Bracket + Grand Final)</option>
                                         <option value="double_elim_quali">Double Elimination Quali / Play-In (16 Teams → 8 weiter, 20 Matches)</option>
-                                        <option value="open_qualifier">🌐 Open Qualifier (8 – 512 Teilnehmer, BYE / Default Win möglich)</option>
+                                        <option value="open_qualifier">🌐 Open Qualifier (8 – 1024 Teilnehmer, BYE / Default Win möglich)</option>
                                     </select>
                                 </div>
                                 <div class="input-group">
@@ -318,6 +327,7 @@
                                         <option value="128" class="te-oq-size-opt hidden">128 Teilnehmer (Open Qualifier)</option>
                                         <option value="256" class="te-oq-size-opt hidden">256 Teilnehmer (Open Qualifier)</option>
                                         <option value="512" class="te-oq-size-opt hidden">512 Teilnehmer (Open Qualifier)</option>
+                                        <option value="1024" class="te-oq-size-opt hidden">1024 Teilnehmer (Open Qualifier)</option>
                                     </select>
                                 </div>
                                 <div class="input-group" id="te-direct-invites-wrap">
@@ -334,6 +344,7 @@
                                         <option value="1">1 Team (Sieger / Finale)</option>
                                         <option value="2">2 Teams (Top 2 / ab Halbfinale)</option>
                                         <option value="4" selected>4 Teams (Top 4 / bis Viertelfinale)</option>
+                                        <option value="6">6 Teams (4 VF-Sieger + 2 aus VF-Verliererrunde)</option>
                                         <option value="8">8 Teams (Top 8 / bis Achtelfinale)</option>
                                         <option value="16">16 Teams (Top 16 / bis Round of 16)</option>
                                     </select>
@@ -348,9 +359,13 @@
                     <div class="input-group"><label for="te-lan-dates">LAN Finals Zeitraum (optional)</label><input type="text" id="te-lan-dates" placeholder="z. B. 23.–26. Januar 2025"></div>
                     <div class="input-group"><label for="te-lan-location">LAN Finals Ort (optional)</label><input type="text" id="te-lan-location" placeholder="z. B. Kopenhagen, Dänemark"></div>
                     <div class="input-group"><label for="te-travel-window">Reisezeitraum bei Weiterkommen (optional)</label><input type="text" id="te-travel-window" placeholder="z. B. 20.–22. Januar 2025"></div>
-                    <div class="input-group"><label for="te-predecessor-id">Qualifikanten automatisch von (optional)</label><select id="te-predecessor-id"><option value="">– Keine Verknüpfung –</option></select></div>
                     <div class="input-group"><label for="te-next-id">Folge-Turnier verlinken (optional)</label><select id="te-next-id"><option value="">– Kein Folge-Turnier –</option></select></div>
                     <div class="input-group"><label for="te-prize-total">Gesamtpreispool in $ (optional)</label><input type="number" id="te-prize-total" min="0" step="1000" placeholder="z. B. 500000"></div>
+                </div>
+
+                <div class="input-group">
+                    <label>Qualifikanten automatisch von (optional – mehrere auswählbar, z. B. Open Qualifier 1–3)</label>
+                    <div id="te-predecessor-list" class="te-predecessor-list"></div>
                 </div>
 
                 <div class="te-grid te-grid-4">
@@ -397,7 +412,7 @@
         </div>
     </div>
 
-    <!-- Geteiltes Team-/BYE-Auswahlmodal für große Turnierbäume (z. B. Open Qualifier 8-512) -->
+    <!-- Geteiltes Team-/BYE-Auswahlmodal für große Turnierbäume (z. B. Open Qualifier 8-1024) -->
     <div id="oq-slot-picker-modal" class="modal-overlay hidden">
         <div class="modal-box" style="max-width:480px;">
             <div class="modal-header">
