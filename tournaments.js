@@ -429,6 +429,31 @@ export function createTournamentsModule(deps) {
         return { label: "🏁 Vergangen", cls: "t-badge-vergangen" };
     }
 
+    function isFirstMondayOfMonth(isoDate) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate || "")) return false;
+        const dt = new Date(`${isoDate}T00:00:00Z`);
+        if (Number.isNaN(dt.getTime())) return false;
+        return dt.getUTCDay() === 1 && dt.getUTCDate() <= 7;
+    }
+
+    function getTournamentSelectableVrsDates() {
+        const map = getVrsRankingsMap();
+        const allDates = Object.keys(map).sort();
+        const firstMondays = allDates.filter(isFirstMondayOfMonth);
+        return firstMondays.length > 0 ? firstMondays : allDates;
+    }
+
+    function getBestFirstMondayVrsDate(targetIso) {
+        const dates = getTournamentSelectableVrsDates();
+        if (dates.length === 0) return getSelectedRankingDate();
+        let best = dates[0];
+        for (const d of dates) {
+            if (d <= targetIso) best = d;
+            else break;
+        }
+        return best;
+    }
+
     function getVrsEntriesForDate(date) {
         const list = getVrsRankingsMap()[date] || [];
         const counts = {};
@@ -532,7 +557,6 @@ export function createTournamentsModule(deps) {
             curSize = curSize / 2;
         }
 
-        // Bei 6 Qualifikanten: Die 4 Viertelfinal-Verlierer spielen 2 Entscheidungsmatches gegeneinander
         if (isSixMode) {
             const decFmt = deciderFormat || defaultFormat;
             const loserMatches = [
@@ -995,6 +1019,7 @@ export function createTournamentsModule(deps) {
             statusMode: "auto",
             status: "auto",
             useAutoInvites: cfg.useAutoInvites !== false,
+            vrsSnapshotDate: cfg.vrsSnapshotDate || "",
             allowedCountries,
             startDate,
             endDate,
@@ -1117,9 +1142,19 @@ export function createTournamentsModule(deps) {
     function computeAllCircuitsInviteData() {
         const allTournaments = getTournamentsCache();
         const gDate = currentGameDate();
-        const vrsDate = getSelectedRankingDate();
-        const vrsLookup = buildVrsLookupForDate(vrsDate);
+        const vrsMap = getVrsRankingsMap();
+        const defaultMondayDate = getBestFirstMondayVrsDate(getSelectedRankingDate());
+        const defaultVrsLookup = buildVrsLookupForDate(defaultMondayDate);
+        const lookupCache = new Map([[defaultMondayDate, defaultVrsLookup]]);
         const players = getPlayers();
+
+        const getLookupForTournament = (tourObj) => {
+            const d = (tourObj?.vrsSnapshotDate && vrsMap[tourObj.vrsSnapshotDate])
+                ? tourObj.vrsSnapshotDate
+                : defaultMondayDate;
+            if (!lookupCache.has(d)) lookupCache.set(d, buildVrsLookupForDate(d));
+            return lookupCache.get(d);
+        };
 
         const tMap = new Map(allTournaments.map(t => [t.id, t]));
         const adj = new Map(allTournaments.map(t => [t.id, new Set()]));
@@ -1144,9 +1179,9 @@ export function createTournamentsModule(deps) {
         const emailsByPlayerUid = new Map();
         players.forEach(p => emailsByPlayerUid.set(p.uid, []));
 
-        const getBaseLivePoints = (p) => {
+        const getBaseLivePoints = (p, lookup) => {
             if (p.type === "vrs") {
-                return vrsLookup.byUid.get(p.uid) ?? vrsLookup.byName.get(p.name) ?? (Number(p.points) || 0);
+                return lookup.byUid.get(p.uid) ?? lookup.byName.get(p.name) ?? (Number(p.points) || 0);
             }
             return Number(p.points) || 0;
         };
@@ -1232,6 +1267,7 @@ export function createTournamentsModule(deps) {
 
                 if (member.useAutoInvites === false || member.invitesBaked) return;
 
+                const memberLookup = getLookupForTournament(member);
                 const predSlots = getPredecessorLinks(member).reduce((sum, lk) => sum + (lk.slots?.length || 0), 0);
                 if (split.hasStage2Direct) {
                     const poBase = split.playoffsDirectBase.filter(p => p.type !== "player");
@@ -1242,7 +1278,7 @@ export function createTournamentsModule(deps) {
                         tierLabel: `${member.name} – Playoffs (Direkt-Invite)`,
                         shortLabel: "Playoffs (Direkt-Invite)",
                         capacity: Number(member.directInvites) || 0,
-                        baseNonPlayer: poBase.map(p => ({ ...p, livePoints: getBaseLivePoints(p) })),
+                        baseNonPlayer: poBase.map(p => ({ ...p, livePoints: getBaseLivePoints(p, memberLookup) })),
                         isOpenQualifier: false
                     });
                     tiers.push({
@@ -1251,7 +1287,7 @@ export function createTournamentsModule(deps) {
                         tierLabel: `${member.name} – Gruppenphase`,
                         shortLabel: "Gruppenphase",
                         capacity: Math.max(0, ((member.groupCount || 1) * (member.groupSize || 16)) - predSlots),
-                        baseNonPlayer: s1Base.map(p => ({ ...p, livePoints: getBaseLivePoints(p) })),
+                        baseNonPlayer: s1Base.map(p => ({ ...p, livePoints: getBaseLivePoints(p, memberLookup) })),
                         isOpenQualifier: false
                     });
                 } else {
@@ -1262,7 +1298,7 @@ export function createTournamentsModule(deps) {
                         tierLabel: comp.length > 1 ? `${member.name}` : `${member.name} – Hauptfeld`,
                         shortLabel: comp.length > 1 ? member.name : "Hauptfeld",
                         capacity: Math.max(0, (Number(member.maxTeams) || 16) - predSlots),
-                        baseNonPlayer: nonPlayer.map(p => ({ ...p, livePoints: getBaseLivePoints(p) })),
+                        baseNonPlayer: nonPlayer.map(p => ({ ...p, livePoints: getBaseLivePoints(p, memberLookup) })),
                         isOpenQualifier: Boolean(member.playoffType === "open_qualifier" || member.isOpenQualifier)
                     });
                 }
@@ -1465,7 +1501,7 @@ export function createTournamentsModule(deps) {
             }
         }
 
-        return { circuits, tournamentToCircuit, tierResultsByTournament, emailsByPlayerUid, vrsLookup };
+        return { circuits, tournamentToCircuit, tierResultsByTournament, emailsByPlayerUid, defaultVrsLookup, getLookupForTournament };
     }
 
     // ==================== TURNIER-GRAPH AUFLÖSEN ====================
@@ -1504,7 +1540,9 @@ export function createTournamentsModule(deps) {
         const invData = inviteCache || computeAllCircuitsInviteData();
         const circuit = invData.tournamentToCircuit.get(tournament.id) || null;
         const tTiers = invData.tierResultsByTournament.get(tournament.id) || {};
-        const vrsLookup = invData.vrsLookup;
+        const vrsLookup = invData.getLookupForTournament
+            ? invData.getLookupForTournament(tournament)
+            : invData.defaultVrsLookup;
 
         const rawManual = Array.isArray(tournament.participants) ? tournament.participants : [];
         const matchesMap = tournament.matches || {};
@@ -1554,7 +1592,6 @@ export function createTournamentsModule(deps) {
             });
         }
 
-        // Qualifikanten aus allen verknüpften Vorgängerturnieren einsammeln
         predLinks.forEach(lk => {
             const predGraph = predGraphMap.get(lk.tournamentId);
             if (!predGraph) return;
@@ -2319,7 +2356,7 @@ export function createTournamentsModule(deps) {
         const loserDeciderRound = allRounds.find(r => r.isLoserDecider) || null;
         const size = Number(t.playoffSize) || 64;
         const r0Matches = mainRounds[0]?.days?.flatMap(d => d.matches) || [];
-        const sliceMatchCount = 32; // 32 R1-Matches = 64er Ast
+        const sliceMatchCount = 32;
         const numSlices = r0Matches.length > sliceMatchCount ? Math.ceil(r0Matches.length / sliceMatchCount) : 1;
 
         let sectionTabsHtml = "";
@@ -2771,11 +2808,14 @@ export function createTournamentsModule(deps) {
                 ? players.map(p => `<option value="${esc(p.uid)}" ${existing.has(`player:${p.uid}`) ? "disabled" : ""}>🛡️ ${esc(getTeamName(p))} (${esc(p.username)})${existing.has(`player:${p.uid}`) ? " ✓" : ""}</option>`).join("")
                 : `<option value="">Keine Spieler erstellt</option>`;
 
-            const vrsMap = getVrsRankingsMap();
-            const dates = Object.keys(vrsMap).sort();
-            const activeDate = getSelectedRankingDate();
-            if (!selectedVrsDate || !vrsMap[selectedVrsDate]) selectedVrsDate = vrsMap[activeDate] ? activeDate : (dates[0] || "");
-            const dOpts = dates.map(d => `<option value="${esc(d)}" ${d === selectedVrsDate ? "selected" : ""}>${esc(d)}</option>`).join("");
+            const dates = getTournamentSelectableVrsDates();
+            if (t.vrsSnapshotDate && dates.includes(t.vrsSnapshotDate)) {
+                selectedVrsDate = t.vrsSnapshotDate;
+            } else if (!selectedVrsDate || !dates.includes(selectedVrsDate)) {
+                const bestMonday = getBestFirstMondayVrsDate(getSelectedRankingDate());
+                selectedVrsDate = dates.includes(bestMonday) ? bestMonday : (dates[0] || "");
+            }
+            const dOpts = dates.map(d => `<option value="${esc(d)}" ${d === selectedVrsDate ? "selected" : ""}>${esc(formatDateDE(d))}</option>`).join("");
             const vOpts = selectedVrsDate ? buildVrsSelectOptions(selectedVrsDate, vrsSearchTerm, existing) : `<option value="">Keine VRS-Daten</option>`;
 
             const tierSelectHtml = hasStage2Direct
@@ -2840,9 +2880,9 @@ export function createTournamentsModule(deps) {
                             </div>
                         </div>
                         <div class="assign-card">
-                            <label>VRS-Team einzeln zuweisen</label>
+                            <label>VRS-Team einzeln zuweisen (1. Montag im Monat)</label>
                             <div class="assign-row">
-                                <select id="tournament-vrs-date" style="max-width:135px;">${dOpts}</select>
+                                <select id="tournament-vrs-date" style="max-width:165px;" title="Nur erster Montag jedes Monats">${dOpts}</select>
                                 <input type="text" id="tournament-vrs-search" placeholder="Team suchen..." value="${esc(vrsSearchTerm)}">
                             </div>
                             <div class="assign-row">
@@ -3632,6 +3672,7 @@ export function createTournamentsModule(deps) {
                 id: existingId || undefined,
                 name: getVal("te-name"),
                 useAutoInvites: getCheck("te-use-auto-invites"),
+                vrsSnapshotDate: prev?.vrsSnapshotDate || "",
                 allowedCountries: Array.from(editorSelectedCountries),
                 startDate: getVal("te-start-date", "2025-02-01"),
                 endDate: getVal("te-end-date"),
@@ -4002,6 +4043,7 @@ export function createTournamentsModule(deps) {
                 if (!uid || !selectedVrsDate || graph.participants.some(p => p.uid === uid)) return;
                 const entry = getVrsEntriesForDate(selectedVrsDate).find(x => x.uid === uid);
                 if (!entry) return;
+                clone.vrsSnapshotDate = selectedVrsDate;
                 clone.participants.push({
                     uid: entry.uid, type: "vrs", name: entry.name, points: entry.points, rank: entry.rank, region: entry.region,
                     ...(curSlotGroup ? { slotGroup: curSlotGroup } : {})
@@ -4044,6 +4086,7 @@ export function createTournamentsModule(deps) {
                     }
                 }
 
+                clone.vrsSnapshotDate = selectedVrsDate;
                 let added = 0;
                 for (const entry of entries) {
                     if (added >= cap || (clone.participants.length >= t.maxTeams)) break;
@@ -4226,7 +4269,18 @@ export function createTournamentsModule(deps) {
                 e.target.value = "";
                 return;
             }
-            if (e.target.id === "tournament-vrs-date") { selectedVrsDate = e.target.value; render(); return; }
+            if (e.target.id === "tournament-vrs-date") {
+                selectedVrsDate = e.target.value;
+                const t = getTournamentById(activeTournamentId);
+                if (t) {
+                    const clone = structuredClone(t);
+                    clone.vrsSnapshotDate = selectedVrsDate;
+                    await saveTournamentDoc(clone);
+                } else {
+                    render();
+                }
+                return;
+            }
             if (e.target.dataset.action === "set-match-slot") {
                 const { tournamentId: tId, matchId: mId, slot: slotStr } = e.target.dataset;
                 const slot = Number(slotStr), t = getTournamentById(tId);
