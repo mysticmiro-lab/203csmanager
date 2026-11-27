@@ -39,7 +39,7 @@ const ADMIN_UID = "URaqNww1RjM87UWtqnFOS4zEaq13";
 const AUTH_EMAIL_DOMAIN = "hltvgame.local";
 const DEFAULT_GAME_DATE = "2025-01-01";
 const TZ_STORAGE_KEY = "hltv_game_timezone";
-const ONLINE_TIMEOUT_MS = 120000; // 2 Minuten ohne Heartbeat => Offline
+const ONLINE_TIMEOUT_MS = 120000;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -59,6 +59,7 @@ let playersCache = [];
 let newsCache = [];
 let messagesCache = [];
 let tournamentsCache = [];
+let vrsOverridesCache = {};
 let globalSettings = {
     gameDate: DEFAULT_GAME_DATE,
     rankingDate: DEFAULT_GAME_DATE,
@@ -77,6 +78,14 @@ let editingNewsId = null;
 
 let presenceHeartbeatTimer = null;
 let presenceUiTimer = null;
+
+// Ranking-Filter & Admin-VRS-Tages-Editor Zustand
+let rankingRegionFilter = "all";
+let vrsEditorOpen = false;
+let vrsEditorDate = "";
+let vrsEditorSearch = "";
+let vrsEditorWorkingEntries = [];
+let vrsEditorDirty = false;
 
 // ==================== HILFSFUNKTIONEN ====================
 function escapeHTML(str) {
@@ -130,14 +139,18 @@ function formatLastSeen(ts) {
     return `${dateStr}, ${timeStr} Uhr`;
 }
 
-function getVrsRankingsMap() {
+function getRawStaticVrsRankingsMap() {
     if (window.HLTV_VRS_RANKINGS) return window.HLTV_VRS_RANKINGS;
     if (typeof VRS_RANKINGS !== "undefined") return VRS_RANKINGS;
     return {};
 }
 
+function getEffectiveVrsRankingsMap() {
+    return { ...getRawStaticVrsRankingsMap(), ...vrsOverridesCache };
+}
+
 function getBestVrsDateForGameDate(gameDate) {
-    const map = getVrsRankingsMap();
+    const map = getEffectiveVrsRankingsMap();
     if (Object.hasOwn(map, gameDate)) return gameDate;
     const dates = Object.keys(map).sort();
     if (dates.length === 0) return DEFAULT_GAME_DATE;
@@ -177,6 +190,12 @@ function translateFirebaseError(err) {
 function isTypingInTournamentFilter() {
     const id = document.activeElement?.id || "";
     return id === "tournament-vrs-search" || id === "tournament-manual-team-name" || id === "tournament-vrs-offset-val";
+}
+
+function isTypingInVrsEditor() {
+    const el = document.activeElement;
+    if (!el) return false;
+    return Boolean(el.closest(".vrs-editor-box"));
 }
 
 // ==================== ONLINE-PRÄSENZ ====================
@@ -225,7 +244,7 @@ const tournamentsModule = createTournamentsModule({
     getCurrentUser: () => currentUser,
     getPlayers: () => playersCache,
     getTeamName,
-    getVrsRankingsMap,
+    getVrsRankingsMap: getEffectiveVrsRankingsMap,
     getSelectedRankingDate: () => getBestVrsDateForGameDate(globalSettings.gameDate),
     getGameDate: () => globalSettings.gameDate,
     getTimezone: () => currentTimezone,
@@ -301,6 +320,9 @@ function resetStateOnLogout() {
     newsCache = [];
     messagesCache = [];
     tournamentsCache = [];
+    vrsOverridesCache = {};
+    vrsEditorOpen = false;
+    vrsEditorDirty = false;
     globalSettings = { gameDate: DEFAULT_GAME_DATE, rankingDate: DEFAULT_GAME_DATE, tournamentsSeeded: false, newsSeeded: false };
     settingsLoaded = false;
     tournamentsLoaded = false;
@@ -378,11 +400,31 @@ function startRealtimeListeners() {
         }
         settingsLoaded = true;
         renderGameDateUI();
-        renderRanking();
+        if (!isTypingInVrsEditor()) renderRanking();
         if (!isTypingInTournamentFilter()) tournamentsModule.render();
         renderManagingView();
         updateManagingBadges();
         maybeSeedInitialTournaments();
+    }));
+
+    unsubscribers.push(onSnapshot(collection(db, "vrs_overrides"), (snap) => {
+        const nextOverrides = {};
+        snap.docs.forEach(d => {
+            const data = d.data();
+            const dateKey = data?.date || (/^\d{4}-\d{2}-\d{2}$/.test(d.id) ? d.id : "");
+            if (dateKey && Array.isArray(data?.entries)) {
+                nextOverrides[dateKey] = data.entries.map(item => [
+                    String(item?.name || ""),
+                    Number(item?.points) || 0,
+                    String(item?.region || "")
+                ]);
+            }
+        });
+        vrsOverridesCache = nextOverrides;
+        if (!isTypingInVrsEditor() && !vrsEditorDirty) renderRanking();
+        if (!isTypingInTournamentFilter()) tournamentsModule.render();
+        renderManagingView();
+        updateManagingBadges();
     }));
 
     unsubscribers.push(onSnapshot(query(collection(db, "players"), orderBy("createdAt", "asc")), async (snap) => {
@@ -399,7 +441,7 @@ function startRealtimeListeners() {
         if (currentView === "team" && selectedTeamUid && document.activeElement?.id !== "rename-team-input") {
             openTeamDetails(selectedTeamUid, false);
         }
-        renderRanking();
+        if (!isTypingInVrsEditor()) renderRanking();
         if (!isTypingInTournamentFilter()) tournamentsModule.render();
         renderManagingView();
         updateManagingBadges();
@@ -565,7 +607,6 @@ async function logout() {
     }
     await signOut(auth);
 }
-
 // ==================== APP-STEUERUNG & EVENTS ====================
 function showApp() {
     document.getElementById("auth-loading")?.classList.add("hidden");
@@ -637,6 +678,134 @@ function setupAppEvents() {
         if (!tabBtn) return;
         currentManagingTab = tabBtn.dataset.managingTab;
         syncManagingTabUI();
+    });
+
+    // Ranking & Admin VRS-Tages-Editor Events
+    const rankingContent = document.getElementById("ranking-content");
+    rankingContent?.addEventListener("change", (e) => {
+        if (e.target.id === "ranking-region-filter") {
+            rankingRegionFilter = e.target.value;
+            renderRanking();
+            return;
+        }
+        if (e.target.id === "vrs-edit-date-select" && currentUser?.role === "admin") {
+            loadVrsEditorForDate(e.target.value);
+            renderRanking();
+        }
+    });
+
+    rankingContent?.addEventListener("input", (e) => {
+        if (e.target.id === "vrs-edit-search") {
+            vrsEditorSearch = e.target.value;
+            updateVrsEditorRowsDOM();
+            return;
+        }
+        const idxAttr = e.target.dataset.vrsIdx;
+        const field = e.target.dataset.vrsField;
+        if (idxAttr !== undefined && field && currentUser?.role === "admin") {
+            const idx = Number(idxAttr);
+            if (!vrsEditorWorkingEntries[idx]) return;
+            vrsEditorWorkingEntries[idx][field] = field === "points"
+                ? Math.max(0, Number(e.target.value) || 0)
+                : String(e.target.value);
+            vrsEditorDirty = true;
+            document.getElementById("vrs-editor-dirty-tag")?.classList.remove("hidden");
+        }
+    });
+
+    rankingContent?.addEventListener("click", async (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+
+        if (btn.id === "toggle-vrs-editor-btn" && currentUser?.role === "admin") {
+            vrsEditorOpen = !vrsEditorOpen;
+            if (vrsEditorOpen) {
+                const targetDate = vrsEditorDate || getBestVrsDateForGameDate(globalSettings.gameDate);
+                loadVrsEditorForDate(targetDate);
+            }
+            renderRanking();
+            return;
+        }
+
+        if (currentUser?.role !== "admin") return;
+
+        if (btn.id === "vrs-edit-load-custom-btn") {
+            const val = document.getElementById("vrs-edit-custom-date")?.value;
+            if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                loadVrsEditorForDate(val);
+                renderRanking();
+            }
+            return;
+        }
+
+        if (btn.id === "vrs-add-team-btn") {
+            const nameEl = document.getElementById("vrs-add-name");
+            const ptsEl = document.getElementById("vrs-add-points");
+            const regEl = document.getElementById("vrs-add-region");
+            const name = nameEl?.value.trim();
+            if (!name) return;
+            const points = Math.max(0, Number(ptsEl?.value) || 0);
+            const region = regEl?.value.trim() || "Europe";
+            vrsEditorWorkingEntries.push({ name, points, region });
+            vrsEditorWorkingEntries.sort((a, b) => b.points - a.points);
+            vrsEditorDirty = true;
+            renderRanking();
+            return;
+        }
+
+        if (btn.dataset.vrsDelIdx !== undefined) {
+            const idx = Number(btn.dataset.vrsDelIdx);
+            if (idx >= 0 && idx < vrsEditorWorkingEntries.length) {
+                vrsEditorWorkingEntries.splice(idx, 1);
+                vrsEditorDirty = true;
+                renderRanking();
+            }
+            return;
+        }
+
+        if (btn.id === "vrs-edit-save-btn") {
+            if (!vrsEditorDate) return;
+            btn.disabled = true;
+            try {
+                const cleaned = vrsEditorWorkingEntries
+                    .map(it => ({
+                        name: String(it.name || "").trim(),
+                        points: Math.max(0, Number(it.points) || 0),
+                        region: String(it.region || "").trim()
+                    }))
+                    .filter(it => it.name.length > 0)
+                    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "de"));
+
+                await setDoc(doc(db, "vrs_overrides", vrsEditorDate), {
+                    date: vrsEditorDate,
+                    entries: cleaned,
+                    updatedAt: Date.now()
+                });
+                vrsEditorWorkingEntries = cleaned;
+                vrsEditorDirty = false;
+                renderRanking();
+            } catch (err) {
+                alert(translateFirebaseError(err));
+            } finally {
+                btn.disabled = false;
+            }
+            return;
+        }
+
+        if (btn.id === "vrs-edit-reset-btn") {
+            if (!vrsEditorDate || !confirm(`Bearbeiteten VRS-Stand für ${formatDateDE(vrsEditorDate)} wirklich auf Originaldaten zurücksetzen?`)) return;
+            btn.disabled = true;
+            try {
+                await deleteDoc(doc(db, "vrs_overrides", vrsEditorDate));
+                delete vrsOverridesCache[vrsEditorDate];
+                loadVrsEditorForDate(vrsEditorDate);
+                renderRanking();
+            } catch (err) {
+                alert(translateFirebaseError(err));
+            } finally {
+                btn.disabled = false;
+            }
+        }
     });
 
     document.getElementById("add-player-form").addEventListener("submit", async (e) => {
@@ -1053,21 +1222,147 @@ function openTeamDetails(uid, switchTab = true) {
     actions.append(back);
 }
 
+// ==================== RANKING & ADMIN VRS-TAGES-EDITOR ====================
+function loadVrsEditorForDate(dateISO) {
+    const vrsMap = getEffectiveVrsRankingsMap();
+    vrsEditorDate = dateISO;
+    const rawList = vrsMap[dateISO] || vrsMap[getBestVrsDateForGameDate(dateISO)] || [];
+    vrsEditorWorkingEntries = rawList.map(([name, pts, region]) => ({
+        name: String(name || ""),
+        points: Number(pts) || 0,
+        region: String(region || "")
+    }));
+    vrsEditorDirty = false;
+}
+
+function buildVrsEditorRowsHTML() {
+    const q = vrsEditorSearch.trim().toLowerCase();
+    const rows = [];
+    vrsEditorWorkingEntries.forEach((item, idx) => {
+        if (q && !item.name.toLowerCase().includes(q) && !item.region.toLowerCase().includes(q)) return;
+        rows.push(`
+            <tr>
+                <td style="width:46px; color:var(--text-muted);">#${idx + 1}</td>
+                <td><input type="text" class="vrs-editor-input" data-vrs-idx="${idx}" data-vrs-field="name" value="${escapeHTML(item.name)}"></td>
+                <td style="width:110px;"><input type="number" class="vrs-editor-input" data-vrs-idx="${idx}" data-vrs-field="points" min="0" value="${Number(item.points) || 0}"></td>
+                <td style="width:180px;"><input type="text" class="vrs-editor-input" list="vrs-region-datalist" data-vrs-idx="${idx}" data-vrs-field="region" value="${escapeHTML(item.region)}" placeholder="z. B. Europe"></td>
+                <td style="width:70px; text-align:right;"><button type="button" class="btn btn-danger btn-small" data-vrs-del-idx="${idx}" title="Entfernen">🗑️</button></td>
+            </tr>
+        `);
+    });
+    return rows.length
+        ? rows.join("")
+        : `<tr><td colspan="5" class="empty-team-hint">Keine passenden Teams für diesen Filter gefunden.</td></tr>`;
+}
+
+function updateVrsEditorRowsDOM() {
+    const tbody = document.getElementById("vrs-editor-tbody");
+    if (tbody) tbody.innerHTML = buildVrsEditorRowsHTML();
+}
+
+function getRegionBadgeClass(region) {
+    const r = String(region || "");
+    if (!r) return "";
+    if (r.includes("Europe") && !r.includes("Americas") && !r.includes("Asia")) return "eu";
+    if (r.includes("Americas") && !r.includes("Europe")) return "am";
+    if (r.includes("Asia") && !r.includes("Americas")) return "as";
+    if (r.includes("Europe")) return "eu";
+    return "am";
+}
+
 function renderRanking() {
     const target = document.getElementById("ranking-content");
     if (!target) return;
-    const vrsMap = getVrsRankingsMap();
+    const vrsMap = getEffectiveVrsRankingsMap();
     const date = getBestVrsDateForGameDate(globalSettings.gameDate);
+    const admin = currentUser?.role === "admin";
 
-    const playerTeams = playersCache.map(t => ({ name: getTeamName(t), manager: t.username, points: Number(t.points) || 0, official: false }));
-    const officialTeams = (vrsMap[date] || []).map(([name, pts]) => ({ name, manager: "HLTV / VRS", points: Number(pts) || 0, official: true }));
-    const all = [...playerTeams, ...officialTeams].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "de"));
+    const playerTeams = playersCache.map(t => ({
+        name: getTeamName(t),
+        manager: t.username,
+        points: Number(t.points) || 0,
+        region: String(t.region || ""),
+        official: false
+    }));
+    const officialTeams = (vrsMap[date] || []).map(([name, pts, region]) => ({
+        name: String(name),
+        manager: "HLTV / VRS",
+        points: Number(pts) || 0,
+        region: String(region || ""),
+        official: true
+    }));
+
+    let all = [...playerTeams, ...officialTeams].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "de"));
+    if (rankingRegionFilter !== "all") {
+        all = all.filter(t => t.region.includes(rankingRegionFilter));
+    }
+
+    const isDayEdited = Object.hasOwn(vrsOverridesCache, date);
+    let editorHtml = "";
+    if (admin && vrsEditorOpen) {
+        if (!vrsEditorDate) loadVrsEditorForDate(date);
+        const allDates = Array.from(new Set([...Object.keys(vrsMap), vrsEditorDate].filter(Boolean))).sort();
+        const dateOpts = allDates.map(d => `<option value="${escapeHTML(d)}" ${d === vrsEditorDate ? "selected" : ""}>${escapeHTML(d)}${Object.hasOwn(vrsOverridesCache, d) ? " (bearbeitet)" : ""}</option>`).join("");
+        const hasOverride = Object.hasOwn(vrsOverridesCache, vrsEditorDate);
+
+        editorHtml = `
+            <div class="vrs-editor-box">
+                <div class="tournament-card-top">
+                    <h3>🛠️ VRS-Ranking bearbeiten: ${escapeHTML(formatDateDE(vrsEditorDate))} <span id="vrs-editor-dirty-tag" class="t-badge t-badge-prize ${vrsEditorDirty ? "" : "hidden"}">Ungespeicherte Änderungen</span></h3>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        ${hasOverride ? `<button type="button" id="vrs-edit-reset-btn" class="btn btn-danger btn-small">↩️ Original wiederherstellen</button>` : ""}
+                        <button type="button" id="vrs-edit-save-btn" class="btn btn-primary btn-small">💾 VRS-Stand in Firebase speichern</button>
+                    </div>
+                </div>
+                <div class="vrs-editor-controls">
+                    <label for="vrs-edit-date-select" style="font-size:.82rem; color:var(--text-muted);">VRS-Tag:</label>
+                    <select id="vrs-edit-date-select">${dateOpts}</select>
+                    <input type="date" id="vrs-edit-custom-date" value="${escapeHTML(vrsEditorDate)}">
+                    <button type="button" id="vrs-edit-load-custom-btn" class="btn btn-secondary btn-small">Tag laden / neu anlegen</button>
+                    <input type="text" id="vrs-edit-search" placeholder="Team oder Region suchen..." value="${escapeHTML(vrsEditorSearch)}" style="min-width:190px; flex:1;">
+                </div>
+                <div class="vrs-editor-add-row">
+                    <input type="text" id="vrs-add-name" placeholder="Neuer Teamname..." style="flex:1; min-width:150px;">
+                    <input type="number" id="vrs-add-points" placeholder="Punkte" min="0" value="1000" style="width:110px;">
+                    <input type="text" id="vrs-add-region" list="vrs-region-datalist" placeholder="Region (z. B. Europe)" value="Europe" style="width:170px;">
+                    <button type="button" id="vrs-add-team-btn" class="btn btn-accent btn-small">+ Team hinzufügen</button>
+                </div>
+                <datalist id="vrs-region-datalist">
+                    <option value="Europe"></option>
+                    <option value="Americas"></option>
+                    <option value="Asia"></option>
+                    <option value="Europe / Americas"></option>
+                    <option value="Americas / Asia"></option>
+                </datalist>
+                <div class="vrs-editor-table-wrap">
+                    <table class="vrs-editor-table">
+                        <thead><tr><th>#</th><th>Teamname</th><th>Punkte</th><th>Region</th><th></th></tr></thead>
+                        <tbody id="vrs-editor-tbody">${buildVrsEditorRowsHTML()}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
 
     target.innerHTML = `
+        <div class="ranking-toolbar">
+            <div class="ranking-filter-group">
+                <label for="ranking-region-filter" style="font-size:.84rem; color:var(--text-muted);">Region:</label>
+                <select id="ranking-region-filter">
+                    <option value="all" ${rankingRegionFilter === "all" ? "selected" : ""}>🌍 Global (Alle Regionen)</option>
+                    <option value="Europe" ${rankingRegionFilter === "Europe" ? "selected" : ""}>🇪🇺 Europe</option>
+                    <option value="Americas" ${rankingRegionFilter === "Americas" ? "selected" : ""}>🌎 Americas</option>
+                    <option value="Asia" ${rankingRegionFilter === "Asia" ? "selected" : ""}>🌏 Asia</option>
+                </select>
+                ${isDayEdited ? `<span class="t-badge t-badge-prize">✏️ VRS-Stand manuell angepasst</span>` : ""}
+            </div>
+            ${admin ? `<button type="button" id="toggle-vrs-editor-btn" class="btn btn-accent btn-small">${vrsEditorOpen ? "✖ VRS-Editor schließen" : "🛠️ VRS-Ranking bearbeiten"}</button>` : ""}
+        </div>
+        ${editorHtml}
         <div class="ranking-table-wrap">
             <table class="ranking-table">
-                <thead><tr><th>Platz</th><th>Team</th><th>Art</th><th>Manager / Quelle</th><th>Punkte</th></tr></thead>
-                <tbody>${all.map((t, i) => `<tr><td>${i + 1}</td><td>${t.official ? "🏆" : "🛡️"} ${escapeHTML(t.name)}</td><td>${t.official ? "HLTV-Team" : "Spielerteam"}</td><td>${escapeHTML(t.manager)}</td><td><strong>${t.points.toLocaleString("de-DE")}</strong></td></tr>`).join("")}</tbody>
+                <thead><tr><th>Platz</th><th>Team</th><th>Region</th><th>Art</th><th>Manager / Quelle</th><th>Punkte</th></tr></thead>
+                <tbody>${all.map((t, i) => `<tr><td>${i + 1}</td><td>${t.official ? "🏆" : "🛡️"} ${escapeHTML(t.name)}</td><td>${t.region ? `<span class="region-badge ${getRegionBadgeClass(t.region)}">${escapeHTML(t.region)}</span>` : "–"}</td><td>${t.official ? "HLTV-Team" : "Spielerteam"}</td><td>${escapeHTML(t.manager)}</td><td><strong>${t.points.toLocaleString("de-DE")}</strong></td></tr>`).join("")}</tbody>
             </table>
         </div>
         <p class="ranking-note">🏆 = offizielles HLTV-/VRS-Team · 🛡️ = Spielerteam · Spieldatum: ${escapeHTML(formatDateDE(globalSettings.gameDate))} (VRS-Stand: ${escapeHTML(formatDateDE(date))}).</p>
