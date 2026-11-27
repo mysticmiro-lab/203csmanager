@@ -971,14 +971,18 @@ export function createTournamentsModule(deps) {
             const predT = getTournamentById(pid);
             let count = 8;
             if (predT) {
-                if (predT.playoffType === "open_qualifier" || predT.isOpenQualifier) count = Number(predT.oqQualifierCount) || 4;
-                else if (predT.isDoubleElimQuali || predT.isQuali32) count = 8;
-                else if (predT.hasPlayIn) count = predT.playInMatches || 4;
-                else if (predT.hasStage1) {
+                if (predT.hasPlayoffs) {
+                    if (predT.playoffType === "open_qualifier" || predT.isOpenQualifier) count = Number(predT.oqQualifierCount) || 4;
+                    else if (predT.isDoubleElimQuali || predT.isQuali32) count = 8;
+                    else {
+                        const lastR = predT.rounds?.[predT.rounds.length - 1];
+                        count = (lastR?.days || []).flatMap(d => d.matches || []).length || 1;
+                    }
+                } else if (predT.hasPlayIn) {
+                    count = predT.playInMatches || 4;
+                } else if (predT.hasStage1) {
                     if (predT.stage1Type === "swiss") count = (predT.groupCount || 1) * ((predT.groupSize || 16) >= 16 ? 8 : 4);
                     else count = (predT.groupCount || 1) * (predT.advancePerGroup || 2);
-                } else if (predT.hasPlayoffs) {
-                    count = 1;
                 }
             }
             return {
@@ -1510,7 +1514,7 @@ export function createTournamentsModule(deps) {
             return {
                 participants: [], autoSlots: [], matchSlots: {}, matchWinners: {},
                 matchSchedules: {}, matchFormats: {}, defaultWins: {}, swissStandings: {}, rrStandings: {},
-                stageAdvancers: [], r32Winners: []
+                stage1Advancers: [], playInAdvancers: [], playoffAdvancers: [], stageAdvancers: [], r32Winners: []
             };
         }
         visited.add(tournament.id);
@@ -1532,6 +1536,9 @@ export function createTournamentsModule(deps) {
                 defaultWins: {},
                 swissStandings: {},
                 rrStandings: {},
+                stage1Advancers: [],
+                playInAdvancers: [],
+                playoffAdvancers: [],
                 stageAdvancers: [],
                 r32Winners: []
             };
@@ -1701,8 +1708,11 @@ export function createTournamentsModule(deps) {
 
         const swissStandings = {};
         const rrStandings = {};
-        const stageAdvancers = [];
+        const stage1Advancers = [];
+        const playInAdvancers = [];
+        const playoffAdvancers = [];
 
+        // Stufe 1: Swiss / GSL / Round-Robin
         const stage1Pool = getStage1ParticipantsRaw(tournament, participants);
         (tournament.swissGroups || []).forEach((g, gIdx) => {
             const gTeams = stage1Pool.slice(gIdx * g.teamCount, (gIdx + 1) * g.teamCount);
@@ -1734,13 +1744,13 @@ export function createTournamentsModule(deps) {
 
             const sorted = Object.values(table).sort((a, b) => (b.wins - b.losses) - (a.wins - a.losses) || b.wins - a.wins || a.losses - b.losses || a.seed - b.seed);
             swissStandings[g.id] = sorted;
-            sorted.filter(row => row.wins >= g.winsToAdvance).forEach(row => stageAdvancers.push(row.uid));
+            sorted.filter(row => row.wins >= g.winsToAdvance).forEach(row => stage1Advancers.push(row.uid));
         });
 
         (tournament.deGroups || []).forEach(g => {
             g.matches.forEach(m => resolveMatch(m));
             (g.qualifierMatchIds || []).forEach(qId => {
-                if (matchWinners[qId]) stageAdvancers.push(matchWinners[qId]);
+                stage1Advancers.push(matchWinners[qId] || null);
             });
         });
 
@@ -1759,16 +1769,18 @@ export function createTournamentsModule(deps) {
             }));
             const sorted = Object.values(table).sort((a, b) => b.points - a.points || b.wins - a.wins || a.losses - b.losses || a.seed - b.seed);
             rrStandings[g.id] = sorted;
-            sorted.slice(0, g.advanceCount || 2).forEach(row => { if (row.played > 0) stageAdvancers.push(row.uid); });
+            sorted.slice(0, g.advanceCount || 2).forEach(row => { if (row.played > 0) stage1Advancers.push(row.uid); });
         });
 
+        // Stufe 2: Play-In
         if (tournament.playInStage) {
             tournament.playInStage.rounds.forEach(r => r.days.forEach(d => d.matches.forEach(m => resolveMatch(m, [], true, d.dateISO || ""))));
             (tournament.playInStage.qualifierMatchIds || []).forEach(qId => {
-                if (matchWinners[qId]) stageAdvancers.push(matchWinners[qId]);
+                playInAdvancers.push(matchWinners[qId] || null);
             });
         }
 
+        // Stufe 3: Playoffs / Quali32 / Open Qualifier
         const roundsList = tournament.rounds || [];
         roundsList.forEach(r => {
             r.days.forEach(d => d.matches.forEach(m => {
@@ -1783,34 +1795,41 @@ export function createTournamentsModule(deps) {
 
         if (tournament.isDoubleElimQuali && tournament.deQualiMeta?.qualifierMatchIds) {
             tournament.deQualiMeta.qualifierMatchIds.forEach(qId => {
-                if (matchWinners[qId]) stageAdvancers.push(matchWinners[qId]);
+                playoffAdvancers.push(matchWinners[qId] || null);
             });
         } else if (tournament.isQuali32) {
             (roundsList.find(r => r.id === "r16")?.days || []).flatMap(d => d.matches).forEach(m => {
-                if (matchWinners[m.id]) stageAdvancers.push(matchWinners[m.id]);
+                playoffAdvancers.push(matchWinners[m.id] || null);
             });
         } else if (tournament.playoffType === "open_qualifier" || tournament.isOpenQualifier) {
             if (Number(tournament.oqQualifierCount) === 6) {
                 const qfRound = roundsList.find(r => r.id === "oq-r8");
                 const loserRound = roundsList.find(r => r.id === "oq-r8-losers");
                 (qfRound?.days || []).flatMap(d => d.matches).forEach(m => {
-                    if (matchWinners[m.id]) stageAdvancers.push(matchWinners[m.id]);
+                    playoffAdvancers.push(matchWinners[m.id] || null);
                 });
                 (loserRound?.days || []).flatMap(d => d.matches).forEach(m => {
-                    if (matchWinners[m.id]) stageAdvancers.push(matchWinners[m.id]);
+                    playoffAdvancers.push(matchWinners[m.id] || null);
                 });
             } else {
                 const finalRound = roundsList[roundsList.length - 1];
                 (finalRound?.days || []).flatMap(d => d.matches).forEach(m => {
-                    if (matchWinners[m.id]) stageAdvancers.push(matchWinners[m.id]);
+                    playoffAdvancers.push(matchWinners[m.id] || null);
                 });
             }
-        } else if (!tournament.hasStage1 && !tournament.hasPlayIn && roundsList.length > 0) {
+        } else if (roundsList.length > 0) {
             const finalRound = roundsList[roundsList.length - 1];
             (finalRound.days || []).flatMap(d => d.matches).forEach(m => {
-                if (matchWinners[m.id]) stageAdvancers.push(matchWinners[m.id]);
+                playoffAdvancers.push(matchWinners[m.id] || null);
             });
         }
+
+        // Für verknüpfte Folgeturniere zählen immer nur die Weiterkommenden der letzten aktiven Stufe!
+        const stageAdvancers = (tournament.hasPlayoffs && roundsList.length > 0)
+            ? playoffAdvancers
+            : (tournament.hasPlayIn && tournament.playInStage)
+                ? playInAdvancers
+                : stage1Advancers;
 
         return {
             participants,
@@ -1822,6 +1841,9 @@ export function createTournamentsModule(deps) {
             defaultWins,
             swissStandings,
             rrStandings,
+            stage1Advancers,
+            playInAdvancers,
+            playoffAdvancers,
             stageAdvancers,
             r32Winners
         };
@@ -4211,7 +4233,7 @@ export function createTournamentsModule(deps) {
                 });
                 g.rounds[rIdx].matches.forEach((m, idx) => { clone.matches[m.id] = pairs[idx] || [null, null]; });
             } else if (action === "fill-playin-from-stage1") {
-                const adv = resolveTournamentGraph(t).stageAdvancers;
+                const adv = resolveTournamentGraph(t).stage1Advancers;
                 const pi = t.playInStage;
                 if (!pi) return;
                 let idx = 0;
@@ -4221,7 +4243,7 @@ export function createTournamentsModule(deps) {
                 })));
             } else if (action === "fill-playoffs-from-groups") {
                 const graph = resolveTournamentGraph(t);
-                const adv = graph.stageAdvancers;
+                const adv = t.hasPlayIn ? graph.playInAdvancers : graph.stage1Advancers;
                 const firstRound = t.rounds?.[0];
                 if (!firstRound) return;
                 if (t.playoffSize === 16 && t.directInvites === 8) {
