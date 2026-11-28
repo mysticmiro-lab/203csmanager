@@ -1,3 +1,4 @@
+/* === START OF FILE tournaments.js (TEIL 1/3) === */
 // ==================== CS2 MODULARES TURNIER-SYSTEM ====================
 export function createTournamentsModule(deps) {
     const {
@@ -32,6 +33,7 @@ export function createTournamentsModule(deps) {
     let vrsFillValue = "1";
     let activeOqSection = "all";
     let oqPickerContext = null;
+    let lastRenderContextKey = "";
 
     // Zustand für Länder-Picker & Vorgänger-Mehrfachauswahl im Turnier-Editor
     let editorSelectedCountries = new Set();
@@ -179,7 +181,81 @@ export function createTournamentsModule(deps) {
         return div.innerHTML;
     };
 
+    const cssEsc = (val) => (typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(String(val))
+        : String(val).replace(/["\\]/g, "\\$&"));
+
     const sanitizeKey = (k) => String(k || "").replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    function captureTournamentScrollState(root) {
+        const cb = document.querySelector(".content-body");
+        const activeEl = document.activeElement;
+        let focusSelector = "";
+        if (activeEl && root.contains(activeEl)) {
+            const action = activeEl.dataset?.action;
+            const matchId = activeEl.dataset?.matchId;
+            const slot = activeEl.dataset?.slot;
+            const roundId = activeEl.dataset?.roundId;
+            if (action && matchId && slot !== undefined) {
+                focusSelector = `[data-action="${cssEsc(action)}"][data-match-id="${cssEsc(matchId)}"][data-slot="${cssEsc(slot)}"]`;
+            } else if (action && matchId) {
+                focusSelector = `[data-action="${cssEsc(action)}"][data-match-id="${cssEsc(matchId)}"]`;
+            } else if (action && roundId) {
+                focusSelector = `[data-action="${cssEsc(action)}"][data-round-id="${cssEsc(roundId)}"]`;
+            }
+        }
+        return {
+            winX: window.scrollX || window.pageXOffset || 0,
+            winY: window.scrollY || window.pageYOffset || 0,
+            cbTop: cb ? cb.scrollTop : 0,
+            cbLeft: cb ? cb.scrollLeft : 0,
+            oqScrolls: Array.from(root.querySelectorAll(".oq-bracket-scroll")).map(el => ({ top: el.scrollTop, left: el.scrollLeft })),
+            bracketScrolls: Array.from(root.querySelectorAll(".bracket-scroll")).map(el => ({ top: el.scrollTop, left: el.scrollLeft })),
+            swissScrolls: Array.from(root.querySelectorAll(".swiss-tree-scroll")).map(el => ({ top: el.scrollTop, left: el.scrollLeft })),
+            gslScrolls: Array.from(root.querySelectorAll(".gsl-tree-scroll")).map(el => ({ top: el.scrollTop, left: el.scrollLeft })),
+            swissDetailsOpen: Array.from(root.querySelectorAll("details.swiss-table-details")).map(el => el.open),
+            focusSelector
+        };
+    }
+
+    function restoreTournamentScrollState(root, snap) {
+        if (!snap) return;
+        const applyList = (selector, saved) => {
+            const els = root.querySelectorAll(selector);
+            saved.forEach((pos, idx) => {
+                if (els[idx]) {
+                    els[idx].scrollTop = pos.top;
+                    els[idx].scrollLeft = pos.left;
+                }
+            });
+        };
+        applyList(".oq-bracket-scroll", snap.oqScrolls);
+        applyList(".bracket-scroll", snap.bracketScrolls);
+        applyList(".swiss-tree-scroll", snap.swissScrolls);
+        applyList(".gsl-tree-scroll", snap.gslScrolls);
+
+        const details = root.querySelectorAll("details.swiss-table-details");
+        snap.swissDetailsOpen.forEach((isOpen, idx) => {
+            if (details[idx]) details[idx].open = Boolean(isOpen);
+        });
+
+        const cb = document.querySelector(".content-body");
+        if (cb) {
+            cb.scrollTop = snap.cbTop;
+            cb.scrollLeft = snap.cbLeft;
+        }
+        if (snap.focusSelector) {
+            const target = root.querySelector(snap.focusSelector);
+            if (target && typeof target.focus === "function") {
+                try { target.focus({ preventScroll: true }); } catch (_) {}
+            }
+        }
+        try {
+            window.scrollTo({ left: snap.winX, top: snap.winY, behavior: "instant" });
+        } catch (_) {
+            window.scrollTo(snap.winX, snap.winY);
+        }
+    }
 
     const addDaysISO = (dateStr, delta) => {
         const base = /^\d{4}-\d{2}-\d{2}$/.test(dateStr || "") ? dateStr : "2025-01-01";
@@ -436,11 +512,13 @@ export function createTournamentsModule(deps) {
         return dt.getUTCDay() === 1 && dt.getUTCDate() <= 7;
     }
 
+    const isVrsReferenceDate = (isoDate) => isoDate === "2025-01-01" || isFirstMondayOfMonth(isoDate);
+
     function getTournamentSelectableVrsDates() {
         const map = getVrsRankingsMap();
         const allDates = Object.keys(map).sort();
-        const firstMondays = allDates.filter(isFirstMondayOfMonth);
-        return firstMondays.length > 0 ? firstMondays : allDates;
+        const refDates = allDates.filter(isVrsReferenceDate);
+        return refDates.length > 0 ? refDates : allDates;
     }
 
     function getBestFirstMondayVrsDate(targetIso) {
@@ -861,6 +939,7 @@ export function createTournamentsModule(deps) {
         }
         return { id: groupId, name: `Gruppe ${groupId}`, size, advanceCount, rounds, nextOffset: dayOffset + (n - 1) };
     }
+
     function buildTournamentFromModularConfig(cfg) {
         const startDate = cfg.startDate || "2025-02-01";
         const defaultFormat = cfg.defaultFormat || "BO3";
@@ -1063,7 +1142,8 @@ export function createTournamentsModule(deps) {
     function getInitialSeedTournaments() {
         return [];
     }
-
+/* === ENDE TEIL 1/3 von tournaments.js === */
+/* === TEIL 2/5 von tournaments.js === */
     // ==================== VRS-EINLADUNGEN & VERBUND-LOGIK ====================
     function splitBaseParticipantsByTier(t) {
         const raw = Array.isArray(t.participants) ? t.participants : [];
@@ -1555,6 +1635,8 @@ export function createTournamentsModule(deps) {
         const matchesMap = tournament.matches || {};
         const winnersMap = tournament.winners || {};
         const defaultWins = tournament.defaultWins || {};
+        const resolvedDefaultWins = { ...defaultWins };
+        const isOqTourney = Boolean(tournament.playoffType === "open_qualifier" || tournament.isOpenQualifier);
 
         const predLinks = getPredecessorLinks(tournament);
         const predGraphMap = new Map();
@@ -1702,8 +1784,18 @@ export function createTournamentsModule(deps) {
             }
 
             matchSlots[m.id] = row;
-            const rawW = isMatchFinishedForView(m, fallbackIso) ? (winnersMap[m.id] || null) : null;
+            const hasAutoByeWin = isOqTourney && !winnersMap[m.id] && (
+                (row[0] && row[0] !== "__BYE__" && row[1] === "__BYE__") ||
+                (row[1] && row[1] !== "__BYE__" && row[0] === "__BYE__")
+            );
+            const autoByeUid = hasAutoByeWin ? (row[0] === "__BYE__" ? row[1] : row[0]) : null;
+            const rawW = isMatchFinishedForView(m, fallbackIso) ? (winnersMap[m.id] || autoByeUid || null) : null;
             matchWinners[m.id] = (rawW && rawW !== "__BYE__" && (rawW === row[0] || rawW === row[1])) ? rawW : null;
+            if (matchWinners[m.id] && (hasAutoByeWin || defaultWins[m.id])) {
+                resolvedDefaultWins[m.id] = true;
+            } else {
+                delete resolvedDefaultWins[m.id];
+            }
         };
 
         const swissStandings = {};
@@ -1734,7 +1826,7 @@ export function createTournamentsModule(deps) {
                         if (table[sl[0]]) table[sl[0]].opponents.add(sl[1]);
                         if (table[sl[1]]) table[sl[1]].opponents.add(sl[0]);
                     }
-                    if (w && sl[0] && sl[1]) {
+                    if (w) {
                         const l = w === sl[0] ? sl[1] : sl[0];
                         if (table[w]) table[w].wins++;
                         if (l && l !== "__BYE__" && table[l]) table[l].losses++;
@@ -1761,7 +1853,7 @@ export function createTournamentsModule(deps) {
             g.rounds.forEach(r => r.matches.forEach(m => {
                 resolveMatch(m, gTeams, true, r.dateISO || "");
                 const sl = matchSlots[m.id], w = matchWinners[m.id];
-                if (w && sl[0] && sl[1]) {
+                if (w) {
                     const l = w === sl[0] ? sl[1] : sl[0];
                     if (table[w]) { table[w].played++; table[w].wins++; table[w].points += 3; }
                     if (l && l !== "__BYE__" && table[l]) { table[l].played++; table[l].losses++; }
@@ -1838,7 +1930,7 @@ export function createTournamentsModule(deps) {
             matchWinners,
             matchSchedules,
             matchFormats,
-            defaultWins,
+            defaultWins: resolvedDefaultWins,
             swissStandings,
             rrStandings,
             stage1Advancers,
@@ -1866,6 +1958,8 @@ export function createTournamentsModule(deps) {
         const remainingForStage1 = Math.max(0, cap - explicitStage1Count);
         return [...explicitDirect, ...untagged.slice(remainingForStage1)];
     }
+/* === ENDE TEIL 2/5 von tournaments.js === */
+/* === TEIL 3/6 von tournaments.js === */
     // ==================== TEILNEHMER-AUFLÖSUNG & SICHTBARKEIT ====================
     function getResolvedParticipant(uid, participants) {
         if (!uid) return null;
@@ -1949,7 +2043,7 @@ export function createTournamentsModule(deps) {
                             const needed = computeMinPointsNeededForTier(others, lowestTTier.hurdles);
                             myLowRankNotice = needed !== null
                                 ? `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist zu niedrig, um sich für dieses Turnier anzumelden (aktuell mindestens ${needed} Pkt. erforderlich).`
-                                : `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist zu niedrig, um sich für dieses Turnier anzumelden.`;
+                                : `Das VRS-Ranking deines Teams (${myPts} Pkt.) ist für dieses Turnier zu niedrig.`;
                         }
                     }
                 }
@@ -2061,6 +2155,7 @@ export function createTournamentsModule(deps) {
         const resolved = getResolvedParticipant(assignedUid, participants);
         const isWin = Boolean(winnerUid && assignedUid && winnerUid === assignedUid);
         const isLoss = Boolean(winnerUid && assignedUid && assignedUid !== "__BYE__" && winnerUid !== assignedUid);
+        const isDefWin = Boolean(winnerUid && graph.defaultWins?.[match.id]);
 
         if (!admin) {
             if (!resolved) {
@@ -2070,7 +2165,7 @@ export function createTournamentsModule(deps) {
             if (resolved.isBye) {
                 return `<div class="match-team-row tbd"><span>— Freilos (BYE) —</span><span>W/O</span></div>`;
             }
-            return `<div class="match-team-row ${isWin ? "winner" : (isLoss ? "loser" : "")}"><span>${formatParticipantLabel(resolved)}</span><span style="font-size:.72rem;">${isWin ? "Sieger" : (resolved.type === "player" ? "Spieler" : "VRS")}</span></div>`;
+            return `<div class="match-team-row ${isWin ? "winner" : (isLoss ? "loser" : "")}"><span>${formatParticipantLabel(resolved)}</span><span style="font-size:.72rem;">${isWin ? (isDefWin ? "Def-Win (W/O)" : "Sieger") : (resolved.type === "player" ? "Spieler" : "VRS")}</span></div>`;
         }
 
         const tObj = getTournamentById(tId);
@@ -2091,7 +2186,8 @@ export function createTournamentsModule(deps) {
                     <option value="__BYE__" ${assignedUid === "__BYE__" ? "selected" : ""}>— Freilos (BYE) —</option>
                     ${options}
                 </select>
-                <button type="button" class="btn-winner-toggle ${isWin ? "active" : ""}" data-action="toggle-winner" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" data-uid="${esc(assignedUid || "")}" ${!canWin ? "disabled" : ""} title="Als Sieger festlegen">🏆</button>
+                <button type="button" class="oq-defwin-btn match-defwin-btn ${isWin && isDefWin ? "active" : ""}" data-action="toggle-defwin" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" data-uid="${esc(assignedUid || "")}" ${!canWin ? "disabled" : ""} title="Default Win (W/O) – Gegner nicht angetreten">W/O</button>
+                <button type="button" class="btn-winner-toggle ${isWin && !isDefWin ? "active" : ""}" data-action="toggle-winner" data-tournament-id="${esc(tId)}" data-match-id="${esc(match.id)}" data-uid="${esc(assignedUid || "")}" ${!canWin ? "disabled" : ""} title="Regulärer Sieger">🏆</button>
             </div>
         `;
     }
@@ -2099,7 +2195,7 @@ export function createTournamentsModule(deps) {
     function renderMatchCard(tId, match, defaultDateLabel, matchFormat, graph, admin, preferred = [], dayEdited = false) {
         const slots = graph.matchSlots[match.id] || [null, null];
         const winUid = graph.matchWinners[match.id] || null;
-        const isDefWin = Boolean(graph.defaultWins?.[match.id]);
+        const isDefWin = Boolean(winUid && graph.defaultWins?.[match.id]);
         const effectiveFmt = graph.matchFormats?.[match.id] || matchFormat || match.format || "BO3";
 
         const sched = graph.matchSchedules?.[match.id] || {};
@@ -2253,7 +2349,7 @@ export function createTournamentsModule(deps) {
         }).join("");
 
         return `
-            ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: 16 Teams in UB Runde 1 setzen &amp; Sieger per 🏆 festlegen.</span><div class="news-form-actions" style="margin-top:0;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten verteilen</button><button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teams in UB R1 setzen</button><button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Zurücksetzen</button></div></div>` : ""}
+            ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: 16 Teams in UB Runde 1 setzen &amp; Sieger per 🏆 oder <strong>W/O</strong> festlegen.</span><div class="news-form-actions" style="margin-top:0;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten verteilen</button><button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teams in UB R1 setzen</button><button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Zurücksetzen</button></div></div>` : ""}
             <h3 style="margin:10px 0 8px;">⚔️ Upper Bracket</h3>
             <div class="bracket-scroll"><div class="bracket-board">
                 <div class="bracket-col-headers">
@@ -2311,19 +2407,40 @@ export function createTournamentsModule(deps) {
                 : `<button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teilnehmer in Runde 1 setzen</button>`);
 
         return `
-            ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: Sieger per 🏆 festlegen.</span><div class="news-form-actions" style="margin-top:0;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Standard-Zeiten verteilen</button>${advAction}<button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Zurücksetzen</button></div></div>` : ""}
+            ${admin ? `<div class="bracket-toolbar"><span class="muted">Admin: Sieger per 🏆 oder <strong>W/O</strong> festlegen.</span><div class="news-form-actions" style="margin-top:0;"><button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Standard-Zeiten verteilen</button>${advAction}<button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Zurücksetzen</button></div></div>` : ""}
             <div class="bracket-scroll"><div class="classic-bracket ${rounds.length >= 4 ? "is-16" : ""}">
                 <div class="classic-col-headers ${rounds.length >= 4 ? "is-16" : ""}">${headers}<div class="bracket-col-head">🥇 Sieger<small>${esc(t.prizePoolTotal ? `${t.prizePoolTotal.toLocaleString("de-DE")} $ Pool` : t.onlineDates)}</small></div></div>
                 <div class="classic-bracket-body ${rounds.length >= 4 ? "is-16" : ""}">${cols}<div class="classic-col-champ"><div class="champion-box"><small>🏆 ${champ ? "Champion · 1. Platz" : "Turniersieger"}</small><strong>${champ ? formatParticipantLabel(champ) : "TBD"}</strong><span>${esc(prizeLbl)}</span></div></div></div>
             </div></div>
         `;
     }
-
+/* === ENDE TEIL 3/6 von tournaments.js === */
+/* === TEIL 4/6 von tournaments.js === */
     // ==================== OPEN QUALIFIER (8 - 1024 TEILNEHMER + 6er MODUS + BYE / DEF-WIN) ====================
+    function getOqRoundSchedule(t, roundObj) {
+        const firstDay = roundObj?.days?.[0];
+        const firstMatch = firstDay?.matches?.[0];
+        const firstSched = firstMatch ? (t.matchSchedules?.[firstMatch.id] || {}) : {};
+        const baseDate = roundObj?.scheduledDateISO || firstSched.date || firstDay?.dateISO || firstMatch?.defaultDateISO || t.startDate || "2025-01-01";
+        const baseTime = roundObj?.scheduledTime || firstSched.time || firstMatch?.time || "";
+        const tzKey = getTimezone?.() || "europe";
+        const conv = convertFromBaseTimezone(baseDate, baseTime, tzKey);
+        return {
+            baseDate,
+            baseTime,
+            shownDate: conv.timeStr ? conv.dateISO : baseDate,
+            shownTime: conv.timeStr || "",
+            tzLabel: conv.tzLabel,
+            displayText: conv.timeStr
+                ? `${formatDateDE(conv.dateISO)} · ${conv.timeStr} (${conv.tzLabel})`
+                : (conv.dateISO ? formatDateDE(conv.dateISO) : (firstDay?.dateLabel || ""))
+        };
+    }
+
     function renderOpenQualifierMatchCard(t, match, dayDateLabel, graph, admin) {
         const slots = graph.matchSlots[match.id] || [null, null];
         const winUid = graph.matchWinners[match.id] || null;
-        const isDefWin = Boolean(graph.defaultWins?.[match.id]);
+        const isDefWin = Boolean(winUid && graph.defaultWins?.[match.id]);
         const effectiveFmt = graph.matchFormats?.[match.id] || match.format || "BO1";
 
         const sched = graph.matchSchedules?.[match.id] || {};
@@ -2418,10 +2535,14 @@ export function createTournamentsModule(deps) {
         const firstRoundCount = visibleRounds[0]?.items?.length || 1;
         const bodyHeight = Math.max(380, firstRoundCount * (admin ? 92 : 76));
 
-        const headersHtml = visibleRounds.map((vr, idx) => `
-            <div class="oq-head-cell">${esc(vr.r.name)} (${vr.items.length})<small>${esc(vr.r.defaultFormat || "BO1")}</small></div>
-            ${idx < visibleRounds.length - 1 ? `<div class="oq-head-spacer"></div>` : ""}
-        `).join("");
+        const headersHtml = visibleRounds.map((vr, idx) => {
+            const sched = getOqRoundSchedule(t, vr.r);
+            const schedTxt = sched.displayText ? ` · ${sched.displayText}` : "";
+            return `
+                <div class="oq-head-cell">${esc(vr.r.name)} (${vr.items.length})<small>${esc(vr.r.defaultFormat || "BO1")}${esc(schedTxt)}</small></div>
+                ${idx < visibleRounds.length - 1 ? `<div class="oq-head-spacer"></div>` : ""}
+            `;
+        }).join("");
 
         const showQualCol = activeOqSection === "all" || activeOqSection === "finals";
         const lastVisibleRound = visibleRounds[visibleRounds.length - 1];
@@ -2474,18 +2595,53 @@ export function createTournamentsModule(deps) {
             `;
         }
 
+        const roundScheduleBarHtml = `
+            <div class="oq-round-sched-bar">
+                <div class="oq-round-sched-header">
+                    <strong>⏰ Runden-Spielzeiten (gilt für alle Matches der jeweiligen Runde)</strong>
+                    <span>${admin ? "Datum &amp; Startzeit pro Runde festlegen:" : `Zeiten in ${esc(TIMEZONES[getTimezone?.() || "europe"]?.label || "UTC+1")}`}</span>
+                </div>
+                <div class="oq-round-sched-grid">
+                    ${allRounds.map(r => {
+                        const matchCount = (r.days || []).reduce((sum, d) => sum + (d.matches?.length || 0), 0);
+                        const sched = getOqRoundSchedule(t, r);
+                        if (!admin) {
+                            return `
+                                <div class="oq-round-sched-item readonly">
+                                    <strong>${esc(r.name)} (${matchCount})</strong>
+                                    <span>${esc(sched.displayText || "Noch offen")}</span>
+                                </div>
+                            `;
+                        }
+                        return `
+                            <div class="oq-round-sched-item">
+                                <div class="oq-round-sched-title">
+                                    <strong>${esc(r.name)}</strong>
+                                    <span>${matchCount} Matches</span>
+                                </div>
+                                <div class="oq-round-sched-inputs">
+                                    <input type="date" class="match-date-input" data-action="set-oq-round-date" data-tournament-id="${esc(t.id)}" data-round-id="${esc(r.id)}" value="${esc(sched.shownDate)}" title="Startdatum für alle Matches in ${esc(r.name)} (${esc(sched.tzLabel)})">
+                                    <input type="time" class="match-time-input" data-action="set-oq-round-time" data-tournament-id="${esc(t.id)}" data-round-id="${esc(r.id)}" value="${esc(sched.shownTime)}" title="Startzeit für alle Matches in ${esc(r.name)} (${esc(sched.tzLabel)})">
+                                </div>
+                            </div>
+                        `;
+                    }).join("")}
+                </div>
+            </div>
+        `;
+
         return `
             ${admin ? `
                 <div class="bracket-toolbar">
-                    <span class="muted">Admin: Slot klicken für Team/Freilos (BYE), Format-Pill klicken für BO1/BO3/BO5, <strong>W/O</strong> für Default Win.</span>
+                    <span class="muted">Admin: Slot klicken für Team/Freilos (BYE – automatischer Def-Win), Format-Pill für BO1/BO3/BO5, <strong>W/O</strong> für Default Win.</span>
                     <div class="news-form-actions" style="margin-top:0;">
                         <button type="button" class="btn btn-secondary btn-small" data-action="oq-seed-r1" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teams &amp; Freilose (BYEs) in R1 setzen</button>
-                        <button type="button" class="btn btn-accent btn-small" data-action="oq-autoresolve-byes" data-tournament-id="${esc(t.id)}">⚡ Freilose als Def-Win werten</button>
                         <button type="button" class="btn btn-secondary btn-small" data-action="auto-schedule-times" data-tournament-id="${esc(t.id)}">⏰ Zeiten</button>
                         <button type="button" class="btn btn-danger btn-small" data-action="clear-matches" data-tournament-id="${esc(t.id)}">🧹 Leeren</button>
                     </div>
                 </div>
             ` : ""}
+            ${roundScheduleBarHtml}
             ${sectionTabsHtml}
             <div class="oq-bracket-scroll">
                 <div class="oq-bracket-wrap">
@@ -2674,7 +2830,8 @@ export function createTournamentsModule(deps) {
             `;
         }).join("");
     }
-
+/* === ENDE TEIL 4/6 von tournaments.js === */
+/* === TEIL 5/8 von tournaments.js === */
     function renderRoundRobinTab(t, graph, admin) {
         return (t.rrGroups || []).map(g => {
             const standingRows = (graph.rrStandings[g.id] || []).map((row, idx) => {
@@ -2748,10 +2905,15 @@ export function createTournamentsModule(deps) {
     function renderRoundTab(t, round, graph, admin, rIdx) {
         const fmt = round.defaultFormat || t.defaultFormat || "BO3";
         if (t.playoffType === "open_qualifier" || t.isOpenQualifier) {
+            const sched = getOqRoundSchedule(t, round);
+            const schedControl = admin
+                ? `<div class="match-admin-schedule"><input type="date" class="match-date-input" data-action="set-oq-round-date" data-tournament-id="${esc(t.id)}" data-round-id="${esc(round.id)}" value="${esc(sched.shownDate)}" title="Startdatum für alle Matches dieser Runde (${esc(sched.tzLabel)})"><input type="time" class="match-time-input" data-action="set-oq-round-time" data-tournament-id="${esc(t.id)}" data-round-id="${esc(round.id)}" value="${esc(sched.shownTime)}" title="Startzeit für alle Matches dieser Runde (${esc(sched.tzLabel)})"></div>`
+                : (sched.displayText ? `<span class="match-date-pill">⏰ ${esc(sched.displayText)}</span>` : "");
             const cardsHtml = round.days.map(d => d.matches.map(m => renderOpenQualifierMatchCard(t, m, d.dateLabel, graph, admin)).join("")).join("");
             return `
                 <div class="bracket-toolbar">
                     <div><h3>${esc(round.name)}</h3><p class="muted">${esc(round.subtitle || "")}</p></div>
+                    ${schedControl}
                 </div>
                 <div class="participants-grid" style="grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));">${cardsHtml}</div>
             `;
@@ -2771,6 +2933,7 @@ export function createTournamentsModule(deps) {
         const hasPred = getPredecessorLinks(t).length > 0;
         return `<div class="bracket-toolbar"><div><h3>${esc(round.name)}</h3><p class="muted">${esc(round.subtitle || "")}</p></div>${admin && rIdx === 0 && !hasPred ? `<button type="button" class="btn btn-secondary btn-small" data-action="autofill-first-round" data-tournament-id="${esc(t.id)}" ${graph.participants.length === 0 ? "disabled" : ""}>🎲 Teilnehmer setzen</button>` : ""}</div><div class="round-days-grid">${daysHtml}</div>`;
     }
+
     function renderPrizePoolBox(t, graph) {
         if (!t.prizePoolTotal || !t.prizeDistribution?.length) return "";
         const rounds = t.rounds || [];
@@ -2902,9 +3065,9 @@ export function createTournamentsModule(deps) {
                             </div>
                         </div>
                         <div class="assign-card">
-                            <label>VRS-Team einzeln zuweisen (1. Montag im Monat)</label>
+                            <label>VRS-Team einzeln zuweisen (Bezugstag / 1. Montag im Monat)</label>
                             <div class="assign-row">
-                                <select id="tournament-vrs-date" style="max-width:165px;" title="Nur erster Montag jedes Monats">${dOpts}</select>
+                                <select id="tournament-vrs-date" style="max-width:165px;" title="Bezugstag (01.01.2025 oder erster Montag jedes Monats)">${dOpts}</select>
                                 <input type="text" id="tournament-vrs-search" placeholder="Team suchen..." value="${esc(vrsSearchTerm)}">
                             </div>
                             <div class="assign-row">
@@ -3073,7 +3236,8 @@ export function createTournamentsModule(deps) {
             </div>
         `;
     }
-
+/* === ENDE TEIL 5/8 von tournaments.js === */
+/* === TEIL 6/8 von tournaments.js === */
     // ==================== KALENDER-ÜBERSICHT (AB JANUAR 2025) ====================
     function renderTournamentCalendar(sortedList) {
         syncCalendarMonthWithGameDate();
@@ -3279,14 +3443,30 @@ export function createTournamentsModule(deps) {
         if (activeTournamentId) {
             const t = getTournamentById(activeTournamentId);
             if (t) {
-                root.innerHTML = renderTournamentDetail(t);
+                const html = renderTournamentDetail(t);
+                const curContextKey = `detail:${t.id}:${activeSubTab}:${activeOqSection}`;
+                const snap = curContextKey === lastRenderContextKey ? captureTournamentScrollState(root) : null;
+                root.innerHTML = html;
                 onTitleChange?.(t.name);
+                lastRenderContextKey = curContextKey;
+                if (snap) {
+                    restoreTournamentScrollState(root, snap);
+                    requestAnimationFrame(() => restoreTournamentScrollState(root, snap));
+                }
                 return;
             }
             activeTournamentId = null;
         }
-        root.innerHTML = renderTournamentOverview();
+        const overviewHtml = renderTournamentOverview();
+        const curContextKey = `overview:${overviewViewMode}:${activeCategory}:${calendarMonth}`;
+        const snap = curContextKey === lastRenderContextKey ? captureTournamentScrollState(root) : null;
+        root.innerHTML = overviewHtml;
         onTitleChange?.("Turniere");
+        lastRenderContextKey = curContextKey;
+        if (snap) {
+            restoreTournamentScrollState(root, snap);
+            requestAnimationFrame(() => restoreTournamentScrollState(root, snap));
+        }
     }
 
     function openTournament(tournamentId) {
@@ -3295,10 +3475,12 @@ export function createTournamentsModule(deps) {
         activeCategory = getEffectiveStatus(target);
         activeTournamentId = target.id;
         activeSubTab = "";
+        lastRenderContextKey = "";
         const isLargeOq = Boolean((target.playoffType === "open_qualifier" || target.isOpenQualifier) && Number(target.playoffSize) >= 512);
         activeOqSection = isLargeOq ? "slice-0" : "all";
         render();
         document.querySelector(".content-body")?.scrollTo({ top: 0, behavior: "smooth" });
+        window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
     // ==================== GETEILTES SLOT-PICKER MODAL (OPEN QUALIFIER) ====================
@@ -3316,7 +3498,7 @@ export function createTournamentsModule(deps) {
         if (search) search.value = "";
         renderOqSlotPickerList("");
         modal?.classList.remove("hidden");
-        search?.focus();
+        search?.focus({ preventScroll: true });
     }
 
     function renderOqSlotPickerList(queryText) {
@@ -3443,7 +3625,8 @@ export function createTournamentsModule(deps) {
             `;
         }).join("")}</div>`;
     }
-
+/* === ENDE TEIL 6/8 von tournaments.js === */
+/* === TEIL 7/8 von tournaments.js === */
     // ==================== VORGÄNGER-MEHRFACHAUSWAHL, LÄNDER-PICKER & EDITOR ====================
     function renderEditorPredecessorList(excludeId = "") {
         const listEl = document.getElementById("te-predecessor-list");
@@ -3741,6 +3924,29 @@ export function createTournamentsModule(deps) {
                 createdAt: prev?.createdAt ?? Date.now()
             });
 
+            if (prev && prev.startDate === tObj.startDate && Array.isArray(prev.rounds)) {
+                tObj.rounds = (tObj.rounds || []).map(nr => {
+                    const pr = prev.rounds.find(r => r.id === nr.id);
+                    if (pr?.scheduledDateISO || pr?.scheduledTime) {
+                        const dIso = pr.scheduledDateISO || nr.days?.[0]?.dateISO || tObj.startDate;
+                        const tStr = pr.scheduledTime || "";
+                        return {
+                            ...nr,
+                            scheduledDateISO: dIso,
+                            scheduledTime: tStr,
+                            days: (nr.days || []).map(d => ({
+                                ...d,
+                                dateISO: dIso,
+                                dateLabel: formatDateDE(dIso),
+                                dateEdited: true,
+                                matches: (d.matches || []).map(m => ({ ...m, defaultDateISO: dIso, ...(tStr ? { time: tStr } : {}) }))
+                            }))
+                        };
+                    }
+                    return nr;
+                });
+            }
+
             await saveTournamentDoc(tObj);
             activeCategory = getEffectiveStatus(tObj);
             closeEditor();
@@ -3779,7 +3985,8 @@ export function createTournamentsModule(deps) {
         }
         return null;
     }
-
+/* === ENDE TEIL 7/8 von tournaments.js === */
+/* === TEIL 8/8 von tournaments.js === */
     // ==================== INTERAKTIONEN (ADMIN, E-MAILS & KALENDER) ====================
     function setupEvents() {
         document.getElementById("managing-emails-root")?.addEventListener("click", async (e) => {
@@ -3825,12 +4032,37 @@ export function createTournamentsModule(deps) {
         oqModal?.addEventListener("click", (e) => { if (e.target === oqModal) closeOqSlotPicker(); });
         document.getElementById("oq-sp-search")?.addEventListener("input", (e) => renderOqSlotPickerList(e.target.value));
 
+        function syncOpenQualifierByeAutoWin(clone, matchId, prevSlots = [null, null]) {
+            const isOq = Boolean(clone.playoffType === "open_qualifier" || clone.isOpenQualifier);
+            if (!isOq) return;
+            const graph = resolveTournamentGraph(clone);
+            const sl = graph.matchSlots[matchId] || [null, null];
+            const s0 = sl[0], s1 = sl[1];
+            const real0 = Boolean(s0 && s0 !== "__BYE__");
+            const real1 = Boolean(s1 && s1 !== "__BYE__");
+
+            if (real0 && s1 === "__BYE__") {
+                clone.winners[matchId] = s0;
+                clone.defaultWins[matchId] = true;
+            } else if (real1 && s0 === "__BYE__") {
+                clone.winners[matchId] = s1;
+                clone.defaultWins[matchId] = true;
+            } else {
+                const hadBye = prevSlots[0] === "__BYE__" || prevSlots[1] === "__BYE__";
+                if ((!real0 && !real1) || (hadBye && clone.defaultWins?.[matchId])) {
+                    delete clone.winners[matchId];
+                    delete clone.defaultWins[matchId];
+                }
+            }
+        }
+
         const applyOqSlotValue = async (val) => {
             if (!oqPickerContext || !isAdmin()) return;
             const t = getTournamentById(oqPickerContext.tournamentId);
             if (!t) return closeOqSlotPicker();
 
-            const prevUid = resolveTournamentGraph(t).matchSlots[oqPickerContext.matchId]?.[oqPickerContext.slot] || null;
+            const prevSlots = resolveTournamentGraph(t).matchSlots[oqPickerContext.matchId] || [null, null];
+            const prevUid = prevSlots[oqPickerContext.slot] || null;
             const clone = structuredClone(t);
             clone.matches = clone.matches || {};
             clone.winners = clone.winners || {};
@@ -3841,6 +4073,7 @@ export function createTournamentsModule(deps) {
                 delete clone.winners[oqPickerContext.matchId];
                 delete clone.defaultWins[oqPickerContext.matchId];
             }
+            syncOpenQualifierByeAutoWin(clone, oqPickerContext.matchId, prevSlots);
             closeOqSlotPicker();
             await saveTournamentDoc(clone);
         };
@@ -3884,7 +4117,7 @@ export function createTournamentsModule(deps) {
                 return;
             }
             if (action === "open-tournament") { openTournament(el.dataset.tournamentId); return; }
-            if (action === "back-to-overview") { activeTournamentId = null; render(); return; }
+            if (action === "back-to-overview") { activeTournamentId = null; lastRenderContextKey = ""; render(); return; }
             if (action === "switch-subtab") { activeSubTab = el.dataset.subtab; render(); return; }
             if (action === "oq-section") { activeOqSection = el.dataset.section || "all"; render(); return; }
 
@@ -3896,7 +4129,7 @@ export function createTournamentsModule(deps) {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `hltv_turniere_backup_${new Date().toISOString().slice(0, 10)}.json`;
+                a.download = `203_cs_manager_turniere_backup_${new Date().toISOString().slice(0, 10)}.json`;
                 a.click();
                 URL.revokeObjectURL(url);
                 return;
@@ -4134,22 +4367,42 @@ export function createTournamentsModule(deps) {
                 if (!confirm("Alle manuell zugewiesenen Teams entfernen?")) return;
                 clone.participants = []; clone.matches = {}; clone.winners = {}; clone.defaultWins = {};
             } else if (action === "auto-schedule-times") {
-                const slots = ["12:00", "15:30", "18:30", "21:30", "10:00", "13:30", "17:00", "20:30"];
                 const tzKey = getTimezone?.() || "europe";
-                const assign = (list, fallbackDate) => list.forEach((m, i) => {
-                    const baseD = clone.matchSchedules[m.id]?.date || m.defaultDateISO || fallbackDate || t.startDate || "2025-01-01";
-                    const conv = convertToBaseTimezone(baseD, slots[i % slots.length], tzKey);
-                    clone.matchSchedules[m.id] = clone.matchSchedules[m.id] || {};
-                    clone.matchSchedules[m.id].time = conv.timeStr;
-                    if (conv.dateISO !== (m.defaultDateISO || baseD)) {
-                        clone.matchSchedules[m.id].date = conv.dateISO;
-                    }
-                });
-                (clone.rounds || []).forEach(r => (r.days || []).forEach(d => assign(d.matches, d.dateISO)));
-                (clone.swissGroups || []).forEach(g => (g.rounds || []).forEach(r => assign(r.matches, r.dateISO)));
-                (clone.deGroups || []).forEach(g => assign(g.matches));
-                (clone.rrGroups || []).forEach(g => (g.rounds || []).forEach(r => assign(r.matches, r.dateISO)));
-                if (clone.playInStage) (clone.playInStage.rounds || []).forEach(r => (r.days || []).forEach(d => assign(d.matches, d.dateISO)));
+                if (clone.playoffType === "open_qualifier" || clone.isOpenQualifier) {
+                    const roundSlots = ["14:00", "15:30", "17:00", "18:30", "20:00", "21:30", "16:00", "18:00", "20:00", "22:00"];
+                    (clone.rounds || []).forEach((r, rIdx) => {
+                        const baseD = r.scheduledDateISO || r.days?.[0]?.dateISO || clone.startDate || "2025-01-01";
+                        const conv = convertToBaseTimezone(baseD, roundSlots[rIdx % roundSlots.length], tzKey);
+                        r.scheduledDateISO = conv.dateISO;
+                        r.scheduledTime = conv.timeStr;
+                        (r.days || []).forEach(d => {
+                            d.dateISO = conv.dateISO;
+                            d.dateLabel = formatDateDE(conv.dateISO);
+                            d.dateEdited = true;
+                            (d.matches || []).forEach(m => {
+                                m.defaultDateISO = conv.dateISO;
+                                m.time = conv.timeStr;
+                                delete clone.matchSchedules[m.id];
+                            });
+                        });
+                    });
+                } else {
+                    const slots = ["12:00", "15:30", "18:30", "21:30", "10:00", "13:30", "17:00", "20:30"];
+                    const assign = (list, fallbackDate) => list.forEach((m, i) => {
+                        const baseD = clone.matchSchedules[m.id]?.date || m.defaultDateISO || fallbackDate || t.startDate || "2025-01-01";
+                        const conv = convertToBaseTimezone(baseD, slots[i % slots.length], tzKey);
+                        clone.matchSchedules[m.id] = clone.matchSchedules[m.id] || {};
+                        clone.matchSchedules[m.id].time = conv.timeStr;
+                        if (conv.dateISO !== (m.defaultDateISO || baseD)) {
+                            clone.matchSchedules[m.id].date = conv.dateISO;
+                        }
+                    });
+                    (clone.rounds || []).forEach(r => (r.days || []).forEach(d => assign(d.matches, d.dateISO)));
+                    (clone.swissGroups || []).forEach(g => (g.rounds || []).forEach(r => assign(r.matches, r.dateISO)));
+                    (clone.deGroups || []).forEach(g => assign(g.matches));
+                    (clone.rrGroups || []).forEach(g => (g.rounds || []).forEach(r => assign(r.matches, r.dateISO)));
+                    if (clone.playInStage) (clone.playInStage.rounds || []).forEach(r => (r.days || []).forEach(d => assign(d.matches, d.dateISO)));
+                }
             } else if (action === "autofill-first-round") {
                 const list = resolveTournamentGraph(t).participants;
                 const firstRound = t.rounds?.[0];
@@ -4177,32 +4430,22 @@ export function createTournamentsModule(deps) {
                 const seeds = generateBracketSeeds(size);
                 const r0 = t.rounds?.[0];
                 if (!r0) return;
+                clone.winners = {};
+                clone.defaultWins = {};
                 let sIdx = 0;
                 r0.days.forEach(d => d.matches.forEach(m => {
                     const seedA = seeds[sIdx], seedB = seeds[sIdx + 1];
-                    clone.matches[m.id] = [
-                        list[seedA - 1]?.uid || "__BYE__",
-                        list[seedB - 1]?.uid || "__BYE__"
-                    ];
-                    sIdx += 2;
-                }));
-                clone.winners = {}; clone.defaultWins = {};
-            } else if (action === "oq-autoresolve-byes") {
-                const r0 = t.rounds?.[0];
-                if (!r0) return;
-                r0.days.forEach(d => d.matches.forEach(m => {
-                    const sl = clone.matches[m.id] || [null, null];
-                    const has0 = Boolean(sl[0] && sl[0] !== "__BYE__");
-                    const has1 = Boolean(sl[1] && sl[1] !== "__BYE__");
-                    if (has0 && !has1) {
-                        clone.matches[m.id] = [sl[0], "__BYE__"];
-                        clone.winners[m.id] = sl[0];
+                    const uidA = list[seedA - 1]?.uid || "__BYE__";
+                    const uidB = list[seedB - 1]?.uid || "__BYE__";
+                    clone.matches[m.id] = [uidA, uidB];
+                    if (uidA !== "__BYE__" && uidB === "__BYE__") {
+                        clone.winners[m.id] = uidA;
                         clone.defaultWins[m.id] = true;
-                    } else if (has1 && !has0) {
-                        clone.matches[m.id] = ["__BYE__", sl[1]];
-                        clone.winners[m.id] = sl[1];
+                    } else if (uidB !== "__BYE__" && uidA === "__BYE__") {
+                        clone.winners[m.id] = uidB;
                         clone.defaultWins[m.id] = true;
                     }
+                    sIdx += 2;
                 }));
             } else if (action === "autofill-de-group") {
                 const gIdx = Number(el.dataset.groupIndex);
@@ -4307,7 +4550,8 @@ export function createTournamentsModule(deps) {
                 const { tournamentId: tId, matchId: mId, slot: slotStr } = e.target.dataset;
                 const slot = Number(slotStr), t = getTournamentById(tId);
                 if (!t) return;
-                const prevUid = resolveTournamentGraph(t).matchSlots[mId]?.[slot] || null;
+                const prevSlots = resolveTournamentGraph(t).matchSlots[mId] || [null, null];
+                const prevUid = prevSlots[slot] || null;
                 const val = e.target.value || "";
                 const clone = structuredClone(t);
                 clone.matches = clone.matches || {};
@@ -4319,6 +4563,64 @@ export function createTournamentsModule(deps) {
                     delete clone.winners[mId];
                     delete clone.defaultWins[mId];
                 }
+                syncOpenQualifierByeAutoWin(clone, mId, prevSlots);
+                await saveTournamentDoc(clone);
+                return;
+            }
+            if (e.target.dataset.action === "set-oq-round-date" || e.target.dataset.action === "set-oq-round-time") {
+                const isDate = e.target.dataset.action === "set-oq-round-date";
+                const { tournamentId: tId, roundId: rId } = e.target.dataset;
+                const val = e.target.value || "";
+                const t = getTournamentById(tId);
+                if (!t) return;
+                const clone = structuredClone(t);
+                clone.matchSchedules = clone.matchSchedules || {};
+                const roundObj = (clone.rounds || []).find(r => r.id === rId);
+                if (!roundObj) return;
+
+                const tzKey = getTimezone?.() || "europe";
+                const curBaseDate = roundObj.scheduledDateISO || roundObj.days?.[0]?.dateISO || roundObj.days?.[0]?.matches?.[0]?.defaultDateISO || clone.startDate || "2025-01-01";
+                const curBaseTime = roundObj.scheduledTime || roundObj.days?.[0]?.matches?.[0]?.time || "";
+                const curConv = convertFromBaseTimezone(curBaseDate, curBaseTime, tzKey);
+
+                let nextBaseDate = curBaseDate;
+                let nextBaseTime = curBaseTime;
+
+                if (isDate) {
+                    if (!val) {
+                        nextBaseDate = clone.startDate || curBaseDate;
+                    } else if (curConv.timeStr) {
+                        const back = convertToBaseTimezone(val, curConv.timeStr, tzKey);
+                        nextBaseDate = back.dateISO;
+                        nextBaseTime = back.timeStr;
+                    } else {
+                        nextBaseDate = val;
+                    }
+                } else {
+                    if (!val) {
+                        nextBaseTime = "";
+                    } else {
+                        const refLocalDate = curConv.dateISO || curBaseDate;
+                        const back = convertToBaseTimezone(refLocalDate, val, tzKey);
+                        nextBaseTime = back.timeStr;
+                        nextBaseDate = back.dateISO;
+                    }
+                }
+
+                roundObj.scheduledDateISO = nextBaseDate;
+                roundObj.scheduledTime = nextBaseTime;
+                (roundObj.days || []).forEach(d => {
+                    d.dateISO = nextBaseDate;
+                    d.dateLabel = formatDateDE(nextBaseDate);
+                    d.dateEdited = true;
+                    (d.matches || []).forEach(m => {
+                        m.defaultDateISO = nextBaseDate;
+                        if (nextBaseTime) m.time = nextBaseTime;
+                        else delete m.time;
+                        delete clone.matchSchedules[m.id];
+                    });
+                });
+
                 await saveTournamentDoc(clone);
                 return;
             }
@@ -4388,7 +4690,8 @@ export function createTournamentsModule(deps) {
         getPendingInviteCountForCurrentUser,
         getInitialSeedTournaments,
         closeEditor,
-        resetActiveTournament: () => { activeTournamentId = null; },
+        resetActiveTournament: () => { activeTournamentId = null; lastRenderContextKey = ""; },
         setup: () => { setupEvents(); setupEditorEvents(); }
     };
 }
+/* === ENDE TEIL 8/8 von tournaments.js === */
