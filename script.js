@@ -1,3 +1,4 @@
+/* === START OF FILE script.js === */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js";
 import {
     getAuth,
@@ -38,6 +39,7 @@ const firebaseConfig = {
 const ADMIN_UID = "URaqNww1RjM87UWtqnFOS4zEaq13";
 const AUTH_EMAIL_DOMAIN = "hltvgame.local";
 const DEFAULT_GAME_DATE = "2025-01-01";
+const VRS_INITIAL_DATE = "2025-01-01";
 const TZ_STORAGE_KEY = "hltv_game_timezone";
 const ONLINE_TIMEOUT_MS = 120000;
 
@@ -145,13 +147,64 @@ function getRawStaticVrsRankingsMap() {
     return {};
 }
 
+function isFirstMondayOfMonth(isoDate) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate || "")) return false;
+    const dt = new Date(`${isoDate}T00:00:00Z`);
+    if (Number.isNaN(dt.getTime())) return false;
+    return dt.getUTCDay() === 1 && dt.getUTCDate() <= 7;
+}
+
+function isVrsReferenceDate(isoDate) {
+    return isoDate === VRS_INITIAL_DATE || isFirstMondayOfMonth(isoDate);
+}
+
+function getFirstMondayOfMonth(year, month1to12) {
+    const first = new Date(Date.UTC(year, month1to12 - 1, 1));
+    const offset = (1 - first.getUTCDay() + 7) % 7;
+    return `${year}-${String(month1to12).padStart(2, "0")}-${String(1 + offset).padStart(2, "0")}`;
+}
+
+function snapToVrsReferenceDate(isoDate) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate || "") || isoDate < "2025-01-06") {
+        return VRS_INITIAL_DATE;
+    }
+    const [y, m] = isoDate.split("-").map(Number);
+    const firstMon = getFirstMondayOfMonth(y, m);
+    if (isoDate >= firstMon) return firstMon;
+    const prevMonth = m === 1 ? 12 : m - 1;
+    const prevYear = m === 1 ? y - 1 : y;
+    return getFirstMondayOfMonth(prevYear, prevMonth);
+}
+
+function getEditorVrsReferenceDates(vrsMap, gameDate) {
+    const set = new Set(Object.keys(vrsMap).filter(isVrsReferenceDate));
+    set.add(VRS_INITIAL_DATE);
+    const baseEnd = gameDate && gameDate > "2025-12-31" ? gameDate : "2025-12-31";
+    const endIso = addDaysISO(baseEnd, 180);
+    const [endY, endM] = endIso.split("-").map(Number);
+    let y = 2025, m = 1;
+    while (y < endY || (y === endY && m <= endM)) {
+        set.add(getFirstMondayOfMonth(y, m));
+        m++;
+        if (m > 12) { m = 1; y++; }
+    }
+    return Array.from(set).sort();
+}
+
 function getEffectiveVrsRankingsMap() {
-    return { ...getRawStaticVrsRankingsMap(), ...vrsOverridesCache };
+    const raw = getRawStaticVrsRankingsMap();
+    const filtered = {};
+    Object.keys(raw).forEach(d => {
+        if (isVrsReferenceDate(d)) filtered[d] = raw[d];
+    });
+    Object.keys(vrsOverridesCache).forEach(d => {
+        if (isVrsReferenceDate(d)) filtered[d] = vrsOverridesCache[d];
+    });
+    return filtered;
 }
 
 function getBestVrsDateForGameDate(gameDate) {
     const map = getEffectiveVrsRankingsMap();
-    if (Object.hasOwn(map, gameDate)) return gameDate;
     const dates = Object.keys(map).sort();
     if (dates.length === 0) return DEFAULT_GAME_DATE;
     let best = dates[0];
@@ -453,7 +506,7 @@ function startRealtimeListeners() {
             seedingNews = true;
             try {
                 await addDoc(collection(db, "news"), {
-                    title: "Neue Saison im HLTV Manager gestartet!",
+                    title: "Neue Saison im 203 CS Manager gestartet!",
                     body: "Die Server sind online! Teams, Turniere, News, Forum und Weltranking werden live über Firebase synchronisiert.",
                     author: "Admin",
                     date: new Date().toLocaleDateString("de-DE"),
@@ -607,6 +660,7 @@ async function logout() {
     }
     await signOut(auth);
 }
+
 // ==================== APP-STEUERUNG & EVENTS ====================
 function showApp() {
     document.getElementById("auth-loading")?.classList.add("hidden");
@@ -732,7 +786,11 @@ function setupAppEvents() {
         if (btn.id === "vrs-edit-load-custom-btn") {
             const val = document.getElementById("vrs-edit-custom-date")?.value;
             if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-                loadVrsEditorForDate(val);
+                const refDate = snapToVrsReferenceDate(val);
+                if (refDate !== val) {
+                    alert(`Hinweis: VRS-Listen gelten jeweils ab 01.01.2025 bzw. ab dem 1. Montag jedes Monats. Für den ${formatDateDE(val)} ist der Bezugstag ${formatDateDE(refDate)} zuständig – dieser wurde geladen.`);
+                }
+                loadVrsEditorForDate(refDate);
                 renderRanking();
             }
             return;
@@ -1224,9 +1282,10 @@ function openTeamDetails(uid, switchTab = true) {
 
 // ==================== RANKING & ADMIN VRS-TAGES-EDITOR ====================
 function loadVrsEditorForDate(dateISO) {
+    const refDate = snapToVrsReferenceDate(dateISO);
     const vrsMap = getEffectiveVrsRankingsMap();
-    vrsEditorDate = dateISO;
-    const rawList = vrsMap[dateISO] || vrsMap[getBestVrsDateForGameDate(dateISO)] || [];
+    vrsEditorDate = refDate;
+    const rawList = vrsMap[refDate] || vrsMap[getBestVrsDateForGameDate(refDate)] || [];
     vrsEditorWorkingEntries = rawList.map(([name, pts, region]) => ({
         name: String(name || ""),
         points: Number(pts) || 0,
@@ -1301,24 +1360,32 @@ function renderRanking() {
     let editorHtml = "";
     if (admin && vrsEditorOpen) {
         if (!vrsEditorDate) loadVrsEditorForDate(date);
-        const allDates = Array.from(new Set([...Object.keys(vrsMap), vrsEditorDate].filter(Boolean))).sort();
-        const dateOpts = allDates.map(d => `<option value="${escapeHTML(d)}" ${d === vrsEditorDate ? "selected" : ""}>${escapeHTML(d)}${Object.hasOwn(vrsOverridesCache, d) ? " (bearbeitet)" : ""}</option>`).join("");
+        const allDates = getEditorVrsReferenceDates(vrsMap, globalSettings.gameDate);
+        if (vrsEditorDate && !allDates.includes(vrsEditorDate)) allDates.push(vrsEditorDate);
+        allDates.sort();
+        const dateOpts = allDates.map(d => {
+            const isEdited = Object.hasOwn(vrsOverridesCache, d);
+            const isPresent = Object.hasOwn(vrsMap, d);
+            const suffix = isEdited ? " (bearbeitet)" : (!isPresent ? " (neu anlegen)" : "");
+            return `<option value="${escapeHTML(d)}" ${d === vrsEditorDate ? "selected" : ""}>${escapeHTML(d)}${suffix}</option>`;
+        }).join("");
         const hasOverride = Object.hasOwn(vrsOverridesCache, vrsEditorDate);
 
         editorHtml = `
             <div class="vrs-editor-box">
                 <div class="tournament-card-top">
-                    <h3>🛠️ VRS-Ranking bearbeiten: ${escapeHTML(formatDateDE(vrsEditorDate))} <span id="vrs-editor-dirty-tag" class="t-badge t-badge-prize ${vrsEditorDirty ? "" : "hidden"}">Ungespeicherte Änderungen</span></h3>
+                    <h3>🛠️ VRS-Bezugstag bearbeiten: ${escapeHTML(formatDateDE(vrsEditorDate))} <span id="vrs-editor-dirty-tag" class="t-badge t-badge-prize ${vrsEditorDirty ? "" : "hidden"}">Ungespeicherte Änderungen</span></h3>
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
                         ${hasOverride ? `<button type="button" id="vrs-edit-reset-btn" class="btn btn-danger btn-small">↩️ Original wiederherstellen</button>` : ""}
                         <button type="button" id="vrs-edit-save-btn" class="btn btn-primary btn-small">💾 VRS-Stand in Firebase speichern</button>
                     </div>
                 </div>
+                <p class="vrs-editor-hint">Bezugstage sind der <strong>01.01.2025</strong> (bis 05.01.) sowie jeder <strong>1. Montag im Monat</strong>. Änderungen an einem Bezugstag gelten automatisch für alle Folgetage bis zum nächsten Bezugstag.</p>
                 <div class="vrs-editor-controls">
-                    <label for="vrs-edit-date-select" style="font-size:.82rem; color:var(--text-muted);">VRS-Tag:</label>
+                    <label for="vrs-edit-date-select" style="font-size:.82rem; color:var(--text-muted);">Bezugstag:</label>
                     <select id="vrs-edit-date-select">${dateOpts}</select>
                     <input type="date" id="vrs-edit-custom-date" value="${escapeHTML(vrsEditorDate)}">
-                    <button type="button" id="vrs-edit-load-custom-btn" class="btn btn-secondary btn-small">Tag laden / neu anlegen</button>
+                    <button type="button" id="vrs-edit-load-custom-btn" class="btn btn-secondary btn-small">Bezugstag laden</button>
                     <input type="text" id="vrs-edit-search" placeholder="Team oder Region suchen..." value="${escapeHTML(vrsEditorSearch)}" style="min-width:190px; flex:1;">
                 </div>
                 <div class="vrs-editor-add-row">
@@ -1365,7 +1432,7 @@ function renderRanking() {
                 <tbody>${all.map((t, i) => `<tr><td>${i + 1}</td><td>${t.official ? "🏆" : "🛡️"} ${escapeHTML(t.name)}</td><td>${t.region ? `<span class="region-badge ${getRegionBadgeClass(t.region)}">${escapeHTML(t.region)}</span>` : "–"}</td><td>${t.official ? "HLTV-Team" : "Spielerteam"}</td><td>${escapeHTML(t.manager)}</td><td><strong>${t.points.toLocaleString("de-DE")}</strong></td></tr>`).join("")}</tbody>
             </table>
         </div>
-        <p class="ranking-note">🏆 = offizielles HLTV-/VRS-Team · 🛡️ = Spielerteam · Spieldatum: ${escapeHTML(formatDateDE(globalSettings.gameDate))} (VRS-Stand: ${escapeHTML(formatDateDE(date))}).</p>
+        <p class="ranking-note">🏆 = offizielles HLTV-/VRS-Team · 🛡️ = Spielerteam · Spieldatum: ${escapeHTML(formatDateDE(globalSettings.gameDate))} (aktiver VRS-Bezugstag: ${escapeHTML(formatDateDE(date))}).</p>
     `;
 }
 
@@ -1450,3 +1517,4 @@ function resetNewsEditor() {
     if (s) s.textContent = "News posten";
     document.getElementById("news-cancel-edit-btn")?.classList.add("hidden");
 }
+/* === END OF FILE script.js === */
